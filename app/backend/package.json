@@ -5,6 +5,7 @@
   "main": "server.ts",
   "scripts": {
     "start": "node dist/server.js",
+    "start:prod": "db-migrate --env production up && node dist/server.js",
     "postinstall": "npm run build",
     "watch": "tsc-watch --onSuccess \"node ./dist/server.js\"",
     "build": "npx tsc",

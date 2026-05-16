@@ -6,6 +6,11 @@
     "database": {"ENV": "POSTGRES_DB"},
     "user": {"ENV": "POSTGRES_USER"},
     "password": {"ENV": "POSTGRES_PASSWORD"},
+    "ssl": false
+  },
+  "production": {
+    "driver": "pg",
+    "url": {"ENV": "DATABASE_URL"},
     "ssl": {"rejectUnauthorized": false}
   },
   "test": {
