@@ -67,6 +67,33 @@ export class ProductStore {
     return rows[0] ? this.mapRow(rows[0]) : rows[0];
   }
 
+  async bulkCreate(products: Product[]): Promise<Product[]> {
+    const results: Product[] = [];
+    for (const product of products) {
+      const { rows } = await client.query(
+        `INSERT INTO products (name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        [
+          product.name,
+          product.price,
+          product.category || null,
+          product.image || null,
+          product.description || null,
+          JSON.stringify(product.previewImg || []),
+          JSON.stringify(product.types || []),
+          JSON.stringify(product.reviews || []),
+          product.overallRating || 0,
+          product.stock || 0,
+          product.isActive !== undefined ? product.isActive : true,
+          product.shopId || null,
+          product.shopName || null,
+        ]
+      );
+      results.push(this.mapRow(rows[0]));
+    }
+    return results;
+  }
+
   async mostPopular(limit: number = 5): Promise<Product[]> {
     const { rows } = await client.query(
       `SELECT p.*, COALESCE(SUM(op.quantity), 0) AS total_quantity

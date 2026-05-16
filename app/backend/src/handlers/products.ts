@@ -100,11 +100,44 @@ const destroy = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, deleted, 'Product deleted.');
 });
 
+const bulkCreate = asyncHandler(async (req: Request, res: Response) => {
+  if (!Array.isArray(req.body))
+    throw new AppError('request body must be an array of products', 400);
+  if (req.body.length === 0)
+    throw new AppError('products array must not be empty', 400);
+
+  const products: Product[] = req.body.map((item: Record<string, unknown>, index: number) => {
+    const name = requireString(item.name as string, `products[${index}].name`);
+    if (item.price === undefined || item.price === null || isNaN(Number(item.price)))
+      throw new AppError(`products[${index}].price is required and must be a valid number`, 400);
+    if (Number(item.price) < 0)
+      throw new AppError(`products[${index}].price must be a non-negative number`, 400);
+    return {
+      name,
+      price: parseFloat(item.price as string),
+      category: item.category as string | undefined,
+      image: item.image as string | undefined,
+      description: item.description as string | undefined,
+      previewImg: item.previewImg as string[] | undefined,
+      types: item.types as Product['types'],
+      reviews: item.reviews as Product['reviews'],
+      overallRating: item.overallRating !== undefined ? parseFloat(item.overallRating as string) : undefined,
+      stock: item.stock !== undefined ? parseInt(item.stock as string) : undefined,
+      isActive: item.isActive as boolean | undefined,
+      shopId: item.shopId as string | undefined,
+      shopName: item.shopName as string | undefined,
+    };
+  });
+
+  sendSuccess(res, await store.bulkCreate(products), `${products.length} products created.`, 201);
+});
+
 const productRoutes = (app: Application) => {
   app.get('/products', verifyAuthToken, index);
   app.get('/products/popular', mostPopular);
   app.get('/products/:id', show);
   app.post('/products', verifyAuthToken, create);
+  app.post('/products/bulk', verifyAuthToken, bulkCreate);
   app.put('/products/:id', verifyAuthToken, update);
   app.delete('/products/:id', verifyAuthToken, destroy);
 };
