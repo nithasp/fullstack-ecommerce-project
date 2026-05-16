@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "full-stack-javascript-developer-course4-ex-Nitha": {
+    "fullstack-ecommerce-project": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -24,7 +24,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/full-stack-javascript-developer-course4-ex-nitha",
+            "outputPath": "dist/fullstack-ecommerce-project",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": [
@@ -81,10 +81,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "full-stack-javascript-developer-course4-ex-Nitha:build:production"
+              "buildTarget": "fullstack-ecommerce-project:build:production"
             },
             "development": {
-              "buildTarget": "full-stack-javascript-developer-course4-ex-Nitha:build:development"
+              "buildTarget": "fullstack-ecommerce-project:build:development"
             }
           },
           "defaultConfiguration": "development"
