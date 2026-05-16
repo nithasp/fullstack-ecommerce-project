@@ -1,0 +1,25 @@
+<div class="input-field"
+     [class.input-field--error]="showErrors">
+  <label class="input-field__label" [for]="name">
+    {{ label }}
+    <span *ngIf="required" class="input-field__required">*</span>
+  </label>
+  <input
+    class="input-field__input"
+    [type]="type"
+    [id]="name"
+    [name]="name"
+    [placeholder]="placeholder"
+    [value]="value"
+    [disabled]="disabled"
+    (input)="onInput($any($event.target).value)"
+    (blur)="onBlur()"
+    [attr.aria-invalid]="showErrors"
+    [attr.aria-describedby]="name + '-feedback'"
+  />
+  <div class="input-field__feedback" [id]="name + '-feedback'">
+    <span *ngIf="showErrors" class="input-field__error-msg">
+      {{ errors[0] }}
+    </span>
+  </div>
+</div>

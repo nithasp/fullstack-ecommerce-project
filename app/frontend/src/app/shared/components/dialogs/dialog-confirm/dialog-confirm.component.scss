@@ -1,0 +1,124 @@
+@import 'variables';
+@import 'mixins';
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md;
+  animation: confirmFadeIn 0.18s ease forwards;
+
+  &--closing {
+    animation: confirmFadeOut 0.18s ease forwards;
+  }
+}
+
+.confirm-dialog {
+  background: $color-bg-white;
+  border-radius: $border-radius-xl;
+  box-shadow: $shadow-xl;
+  width: 100%;
+  max-width: 420px;
+  padding: $spacing-xl $spacing-xl $spacing-lg;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-md;
+  text-align: center;
+  animation: confirmSlideUp 0.2s ease forwards;
+
+  &--closing {
+    animation: confirmSlideDown 0.18s ease forwards;
+  }
+
+  &__icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba($color-primary, 0.1);
+    color: $color-primary;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    &--danger {
+      background: rgba($color-error, 0.1);
+      color: $color-error;
+    }
+  }
+
+  &__title {
+    font-size: $font-size-xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+    margin: 0;
+  }
+
+  &__message {
+    font-size: $font-size-base;
+    color: $color-text-light;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  &__actions {
+    display: flex;
+    gap: $spacing-sm;
+    width: 100%;
+    margin-top: $spacing-sm;
+  }
+
+  &__cancel {
+    @include button-base;
+    flex: 1;
+    padding: $spacing-sm $spacing-md;
+    background: $color-bg;
+    color: $color-text;
+    border-radius: $border-radius-md;
+    font-size: $font-size-base;
+    font-weight: $font-weight-medium;
+    border: 1px solid $color-border;
+    transition: background $transition-fast, border-color $transition-fast;
+
+    &:hover { background: $color-border; }
+  }
+
+  &__confirm {
+    @include button-primary;
+    flex: 1;
+    padding: $spacing-sm $spacing-md;
+    font-size: $font-size-base;
+
+    &--danger {
+      background: $color-error;
+      box-shadow: none;
+
+      &:hover:not(:disabled) { background: darken($color-error, 8%); }
+    }
+  }
+}
+
+@keyframes confirmFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes confirmFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes confirmSlideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes confirmSlideDown {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(20px); opacity: 0; }
+}

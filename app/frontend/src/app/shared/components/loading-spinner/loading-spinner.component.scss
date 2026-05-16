@@ -1,0 +1,72 @@
+@import 'variables';
+@import 'mixins';
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  &--block {
+    flex-direction: column;
+    justify-content: center;
+    padding: $spacing-3xl 0;
+    color: $color-text-light;
+  }
+
+  &--inline {
+    flex-direction: row;
+    flex-shrink: 0;
+    font-size: $font-size-sm;
+    color: $color-text-muted;
+  }
+
+  &__ring {
+    border-radius: 50%;
+    animation: loadingSpinnerSpin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  &--small &__ring {
+    width: 18px;
+    height: 18px;
+    border: 2px solid $color-border;
+    border-top-color: $color-primary;
+  }
+
+  &--medium &__ring {
+    width: 40px;
+    height: 40px;
+    border: 3px solid $color-border;
+    border-top-color: $color-primary;
+  }
+
+  &--large &__ring {
+    width: 56px;
+    height: 56px;
+    border: 4px solid $color-border;
+    border-top-color: $color-primary;
+  }
+
+  &--light.loading-spinner--small &__ring {
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+  }
+
+  &--light.loading-spinner--medium &__ring,
+  &--light.loading-spinner--large &__ring {
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+  }
+
+  &--light &__message {
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  &__message {
+    margin: 0;
+  }
+}
+
+@keyframes loadingSpinnerSpin {
+  to { transform: rotate(360deg); }
+}

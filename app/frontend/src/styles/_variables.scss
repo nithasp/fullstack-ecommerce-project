@@ -1,0 +1,67 @@
+$color-primary: #2563eb;
+$color-primary-dark: #1d4ed8;
+$color-primary-light: #60a5fa;
+$color-primary-bg: #eff6ff;
+$color-secondary: #f59e0b;
+$color-secondary-dark: #d97706;
+$color-success: #10b981;
+$color-success-bg: #ecfdf5;
+$color-error: #ef4444;
+$color-error-bg: #fef2f2;
+$color-warning: #f59e0b;
+$color-info: #3b82f6;
+
+$color-text: #1f2937;
+$color-text-light: #6b7280;
+$color-text-muted: #9ca3af;
+$color-bg: #f3f4f6;
+$color-bg-white: #ffffff;
+$color-border: #e5e7eb;
+$color-border-dark: #d1d5db;
+
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-sm-md: 12px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-2xl: 48px;
+$spacing-3xl: 64px;
+
+$font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+$font-size-xs: 0.75rem;
+$font-size-sm: 0.875rem;
+$font-size-base: 1rem;
+$font-size-lg: 1.125rem;
+$font-size-xl: 1.25rem;
+$font-size-2xl: 1.5rem;
+$font-size-3xl: 1.875rem;
+
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+$border-radius-sm: 6px;
+$border-radius-md: 8px;
+$border-radius-lg: 12px;
+$border-radius-xl: 16px;
+$border-radius-full: 9999px;
+
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+$shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+
+$breakpoint-xs: 400px;
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+
+$transition-fast: 150ms ease;
+$transition-base: 250ms ease;
+$transition-slow: 350ms ease;
+
+$container-max-width: 1200px;
+$navbar-height: 70px;

@@ -1,0 +1,445 @@
+@import 'variables';
+@import 'mixins';
+
+// ─── Overlay — fixed, covers entire app ──────────────────────────────────────
+
+.address-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md;
+  animation: overlayFadeIn $transition-base forwards;
+
+  &--closing {
+    animation: overlayFadeOut $transition-base forwards;
+  }
+}
+
+// ─── Dialog Panel ─────────────────────────────────────────────────────────────
+
+.address-dialog {
+  background: $color-bg-white;
+  border-radius: $border-radius-xl;
+  box-shadow: $shadow-xl;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: dialogSlideUp $transition-slow forwards;
+
+  &--closing {
+    animation: dialogSlideDown $transition-base forwards;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    padding: $spacing-lg;
+    border-bottom: 1px solid $color-border;
+    flex-shrink: 0;
+  }
+
+  &__title {
+    flex: 1;
+    font-size: $font-size-xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+    margin: 0;
+  }
+
+  &__back {
+    @include button-base;
+    background: none;
+    color: $color-text-light;
+    padding: $spacing-xs;
+    border-radius: $border-radius-sm;
+    display: flex;
+    align-items: center;
+    transition: color $transition-fast;
+
+    &:hover { color: $color-text; }
+  }
+
+  &__close {
+    @include button-base;
+    background: $color-bg;
+    color: $color-text-light;
+    font-size: $font-size-xl;
+    width: 34px;
+    height: 34px;
+    border-radius: $border-radius-full;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: all $transition-fast;
+
+    &:hover {
+      background: $color-error-bg;
+      color: $color-error;
+    }
+  }
+
+  // Centered loading / empty state
+  &__loading,
+  &__empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-md;
+    padding: $spacing-xl $spacing-lg;
+    color: $color-text-muted;
+    font-size: $font-size-sm;
+
+    p { margin: 0; }
+  }
+
+  // Scrollable address list
+  &__list {
+    flex: 1;
+    overflow-y: auto;
+    padding: $spacing-md $spacing-lg;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+  }
+
+  // Footer: add + confirm buttons
+  &__footer {
+    padding: $spacing-md $spacing-lg;
+    border-top: 1px solid $color-border;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    flex-shrink: 0;
+  }
+
+  &__add-btn {
+    @include button-base;
+    width: 100%;
+    padding: $spacing-md;
+    border: 1px solid $color-primary;
+    border-radius: $border-radius-md;
+    color: $color-primary;
+    font-size: $font-size-base;
+    font-weight: $font-weight-semibold;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-xs;
+    transition: all $transition-fast;
+
+    &:hover {
+      background: $color-primary;
+      color: $color-bg-white;
+    }
+  }
+
+  &__confirm-btn {
+    @include button-primary;
+    width: 100%;
+    padding: $spacing-md;
+    font-size: $font-size-base;
+    font-weight: $font-weight-semibold;
+  }
+
+  // Scrollable add/edit form
+  &__form {
+    flex: 1;
+    overflow-y: auto;
+    padding: $spacing-lg;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm-md;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: $spacing-md;
+    margin-top: $spacing-xs;
+  }
+
+  &__cancel {
+    @include button-base;
+    padding: $spacing-sm $spacing-xl;
+    background: $color-bg;
+    color: $color-text;
+    border-radius: $border-radius-md;
+    font-size: $font-size-base;
+    font-weight: $font-weight-medium;
+    transition: background $transition-fast;
+
+    &:hover { background: $color-border; }
+  }
+
+  &__save {
+    @include button-primary;
+    padding: $spacing-sm $spacing-xl;
+    font-size: $font-size-base;
+  }
+
+}
+
+// ─── Address List Item ────────────────────────────────────────────────────────
+
+.address-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  border: 2px solid $color-border;
+  border-radius: $border-radius-md;
+  cursor: pointer;
+  transition: border-color $transition-fast, background $transition-fast;
+  user-select: none;
+
+  input[type='radio'] { display: none; }
+
+  &:hover {
+    border-color: $color-primary-light;
+    background: $color-primary-bg;
+  }
+
+  &--selected {
+    border-color: $color-primary;
+    background: $color-primary-bg;
+  }
+
+  &__radio-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid $color-border-dark;
+    flex-shrink: 0;
+    margin-top: 2px;
+    position: relative;
+    transition: border-color $transition-fast;
+
+    .address-list-item--selected & {
+      border-color: $color-primary;
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: $color-primary;
+      }
+    }
+  }
+
+  &__body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__top {
+    display: flex;
+    align-items: baseline;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  &__name {
+    font-size: $font-size-base;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+  }
+
+  &__phone {
+    font-size: $font-size-sm;
+    color: $color-text-light;
+    flex: 1;
+  }
+
+  &__edit {
+    @include button-base;
+    background: none;
+    color: $color-primary;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    padding: 0;
+    margin-left: auto;
+    flex-shrink: 0;
+    transition: color $transition-fast;
+
+    &:hover { color: $color-primary-dark; }
+  }
+
+  &__address,
+  &__city {
+    font-size: $font-size-sm;
+    color: $color-text-light;
+    margin-bottom: 2px;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+
+  &__city { margin-bottom: $spacing-sm; }
+
+  &__tags {
+    display: flex;
+    align-items: center;
+    gap: $spacing-xs;
+    flex-wrap: wrap;
+  }
+
+  &__default-badge {
+    display: inline-block;
+    border: 1px solid $color-primary;
+    color: $color-primary;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+    padding: 1px 6px;
+    border-radius: 2px;
+  }
+
+  &__label-badge {
+    display: inline-block;
+    background: $color-bg;
+    color: $color-text-muted;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-medium;
+    padding: 1px 6px;
+    border-radius: $border-radius-sm;
+    border: 1px solid $color-border;
+  }
+
+  &__delete {
+    @include button-base;
+    background: none;
+    color: $color-text-muted;
+    font-size: $font-size-xs;
+    padding: 0;
+    margin-left: auto;
+    text-decoration: underline;
+    transition: color $transition-fast;
+
+    &:hover { color: $color-error; }
+  }
+}
+
+// ─── Add / Edit Form ──────────────────────────────────────────────────────────
+
+.address-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+
+  @media (max-width: $breakpoint-sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.address-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+
+  &__label {
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    color: $color-text;
+  }
+
+  &__req {
+    color: $color-error;
+    margin-left: 2px;
+  }
+
+  &__input {
+    padding: $spacing-sm $spacing-md;
+    border: 2px solid $color-border;
+    border-radius: $border-radius-md;
+    font-size: $font-size-base;
+    color: $color-text;
+    outline: none;
+    transition: border-color $transition-fast;
+
+    &:focus { border-color: $color-primary; }
+    &::placeholder { color: $color-text-muted; }
+  }
+}
+
+.address-label-options {
+  display: flex;
+  gap: $spacing-sm;
+}
+
+.address-label-btn {
+  @include button-base;
+  padding: $spacing-xs $spacing-lg;
+  border: 1px solid $color-border;
+  border-radius: $border-radius-sm;
+  background: $color-bg-white;
+  color: $color-text-light;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  transition: all $transition-fast;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+  }
+
+  &--active {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: $color-primary-bg;
+    font-weight: $font-weight-semibold;
+  }
+}
+
+.address-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  cursor: pointer;
+  font-size: $font-size-sm;
+  color: $color-text-light;
+  user-select: none;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: $color-primary;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+}
+
+// ─── Animations ───────────────────────────────────────────────────────────────
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes dialogSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes overlayFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes dialogSlideDown {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(24px); opacity: 0; }
+}
+

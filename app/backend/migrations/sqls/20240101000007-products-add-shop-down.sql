@@ -1,0 +1,3 @@
+ALTER TABLE products
+  DROP COLUMN IF EXISTS shop_id,
+  DROP COLUMN IF EXISTS shop_name;

@@ -1,0 +1,75 @@
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-card__header">
+            <div class="auth-card__icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="8.5" cy="7" r="4" />
+                    <line x1="20" y1="8" x2="20" y2="14" />
+                    <line x1="23" y1="11" x2="17" y2="11" />
+                </svg>
+            </div>
+            <h2>Create Account</h2>
+            <p class="auth-card__subtitle">Join us and start shopping</p>
+        </div>
+
+        <form #registerForm="ngForm" (ngSubmit)="onSubmit(registerForm)" class="auth-card__form" novalidate>
+            <div class="form-group">
+                <label for="username" class="form-label">
+                    Username <span class="required">*</span>
+                </label>
+                <input type="text" id="username" name="username" class="form-input"
+                    [class.form-input--error]="usernameField.invalid && (usernameField.touched || submitted)"
+                    [(ngModel)]="username" #usernameField="ngModel" required minlength="3"
+                    placeholder="Choose a username" [disabled]="isLoading" />
+                <div class="form-error" *ngIf="usernameField.invalid && (usernameField.touched || submitted)">
+                    <span *ngIf="usernameField.errors?.['required']">Username is required</span>
+                    <span *ngIf="usernameField.errors?.['minlength']">Username must be at least 3 characters</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">
+                    Password <span class="required">*</span>
+                </label>
+                <input type="password" id="password" name="password" class="form-input"
+                    [class.form-input--error]="passwordField.invalid && (passwordField.touched || submitted)"
+                    [(ngModel)]="password" #passwordField="ngModel" required minlength="8"
+                    placeholder="Create a password" [disabled]="isLoading" />
+                <div class="form-error" *ngIf="passwordField.invalid && (passwordField.touched || submitted)">
+                    <span *ngIf="passwordField.errors?.['required']">Password is required</span>
+                    <span *ngIf="passwordField.errors?.['minlength']">Password must be at least 8 characters</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="confirmPassword" class="form-label">
+                    Confirm Password <span class="required">*</span>
+                </label>
+                <input type="password" id="confirmPassword" name="confirmPassword" class="form-input"
+                    [class.form-input--error]="(confirmField.invalid && (confirmField.touched || submitted)) || (passwordMismatch && (confirmField.touched || submitted))"
+                    [(ngModel)]="confirmPassword" #confirmField="ngModel" required placeholder="Confirm your password"
+                    [disabled]="isLoading" />
+                <div class="form-error" *ngIf="confirmField.invalid && (confirmField.touched || submitted)">
+                    <span *ngIf="confirmField.errors?.['required']">Please confirm your password</span>
+                </div>
+                <div class="form-error"
+                    *ngIf="passwordMismatch && confirmField.valid && (confirmField.touched || submitted)">
+                    <span>Passwords do not match</span>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-btn" [disabled]="isLoading">
+                <span *ngIf="!isLoading">Create Account</span>
+                <span *ngIf="isLoading" class="auth-btn__loading">
+                    <app-loading-spinner size="small" layout="inline" message="Creating account..." variant="light"></app-loading-spinner>
+                </span>
+            </button>
+        </form>
+
+        <div class="auth-card__footer">
+            <p>Already have an account? <a routerLink="/auth/login">Sign in</a></p>
+        </div>
+    </div>
+</div>

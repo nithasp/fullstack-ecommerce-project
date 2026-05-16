@@ -1,0 +1,59 @@
+@import 'variables';
+@import 'mixins';
+
+.confirmation {
+  @include flex-center;
+  min-height: calc(100vh - $navbar-height - $spacing-3xl);
+  padding: $spacing-xl;
+
+  &__card {
+    @include card;
+    text-align: center;
+    padding: $spacing-2xl $spacing-xl;
+    max-width: 500px;
+    width: 100%;
+  }
+
+  &__icon {
+    margin-bottom: $spacing-lg;
+    animation: scaleIn 0.5s ease both;
+  }
+
+  &__checkmark {
+    stroke-dasharray: 60;
+    stroke-dashoffset: 60;
+    animation: checkmark 0.6s ease 0.3s forwards;
+  }
+
+  &__title {
+    font-size: $font-size-2xl;
+    font-weight: $font-weight-bold;
+    color: $color-success;
+    margin-bottom: $spacing-md;
+  }
+
+  &__message {
+    font-size: $font-size-base;
+    color: $color-text;
+    line-height: 1.6;
+    margin-bottom: $spacing-sm;
+  }
+
+  &__sub-message {
+    font-size: $font-size-sm;
+    color: $color-text-light;
+    margin-bottom: $spacing-xl;
+  }
+
+  &__btn {
+    @include button-primary;
+    padding: $spacing-md $spacing-2xl;
+    font-size: $font-size-base;
+  }
+}
+
+@keyframes checkmark {
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -1,0 +1,66 @@
+@import 'variables';
+@import 'mixins';
+
+.input-field {
+  &__label {
+    display: block;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    color: $color-text;
+    margin-bottom: $spacing-xs;
+  }
+
+  &__required {
+    color: $color-error;
+    margin-left: 2px;
+  }
+
+  &__input {
+    width: 100%;
+    padding: $spacing-sm $spacing-md;
+    border: 2px solid $color-border;
+    border-radius: $border-radius-md;
+    font-size: $font-size-base;
+    color: $color-text;
+    background: $color-bg-white;
+    transition: border-color $transition-fast, box-shadow $transition-fast;
+    outline: none;
+
+    &::placeholder {
+      color: $color-text-muted;
+    }
+
+    &:focus {
+      border-color: $color-primary;
+      box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+    }
+
+    &:disabled {
+      background: $color-bg;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+  }
+
+  &__feedback {
+    margin-top: $spacing-xs;
+    font-size: $font-size-xs;
+    transition: all $transition-fast;
+  }
+
+  &__error-msg {
+    color: $color-error;
+    display: flex;
+    align-items: center;
+    gap: $spacing-xs;
+    animation: fadeIn 0.2s ease;
+  }
+
+  &--error &__input {
+    border-color: $color-error;
+    &:focus {
+      box-shadow: 0 0 0 3px rgba($color-error, 0.1);
+    }
+  }
+
+}

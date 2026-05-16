@@ -1,0 +1,108 @@
+@import 'variables';
+@import 'mixins';
+
+.product-list {
+  @include container;
+  padding-top: $spacing-xl;
+  padding-bottom: $spacing-3xl;
+
+  &__header {
+    text-align: center;
+    margin-bottom: $spacing-xl;
+  }
+
+  &__title {
+    font-size: $font-size-3xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+    margin-bottom: $spacing-sm;
+  }
+
+  &__subtitle {
+    font-size: $font-size-lg;
+    color: $color-text-light;
+  }
+
+  &__filters {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    margin-bottom: $spacing-xl;
+
+    @include respond-to(md) {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+
+  &__search-input {
+    width: 100%;
+    max-width: 360px;
+    padding: $spacing-sm $spacing-md;
+    border: 2px solid $color-border;
+    border-radius: $border-radius-full;
+    font-size: $font-size-sm;
+    color: $color-text;
+    background: $color-bg-white;
+    outline: none;
+    transition: border-color $transition-fast, box-shadow $transition-fast;
+
+    &::placeholder {
+      color: $color-text-muted;
+    }
+
+    &:focus {
+      border-color: $color-primary;
+      box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+    }
+  }
+
+  &__categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+  }
+
+  &__category-btn {
+    @include button-base;
+    padding: $spacing-xs $spacing-md;
+    background: $color-bg-white;
+    color: $color-text-light;
+    border: 2px solid $color-border;
+    border-radius: $border-radius-full;
+    font-size: $font-size-sm;
+
+    &:hover {
+      border-color: $color-primary;
+      color: $color-primary;
+    }
+
+    &--active {
+      background: $color-primary;
+      color: white;
+      border-color: $color-primary;
+
+      &:hover {
+        background: $color-primary-dark;
+        color: white;
+      }
+    }
+  }
+
+  &__grid {
+    @include grid(280px);
+  }
+
+  &__loading {
+    @include flex-center;
+    flex-direction: column;
+  }
+
+  &__empty {
+    @include flex-center;
+    padding: $spacing-3xl 0;
+    color: $color-text-light;
+    font-size: $font-size-lg;
+  }
+}

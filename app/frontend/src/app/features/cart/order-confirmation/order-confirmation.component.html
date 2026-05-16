@@ -1,0 +1,31 @@
+<div class="confirmation animate-scale-in">
+  <div class="confirmation__card">
+    <div class="confirmation__icon">
+      <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+        <circle cx="40" cy="40" r="38" stroke="#10b981" stroke-width="3" fill="#ecfdf5" />
+        <path
+          d="M24 40 L35 51 L56 30"
+          stroke="#10b981"
+          stroke-width="4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+          class="confirmation__checkmark"
+        />
+      </svg>
+    </div>
+
+    <h1 class="confirmation__title">Order Confirmed!</h1>
+    <p class="confirmation__message">
+      Thank you for your purchase. Your order has been placed successfully
+      and is being processed.
+    </p>
+    <p class="confirmation__sub-message">
+      A confirmation email will be sent to your inbox shortly.
+    </p>
+
+    <button class="confirmation__btn" (click)="continueShopping()">
+      Continue Shopping
+    </button>
+  </div>
+</div>

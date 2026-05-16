@@ -1,0 +1,80 @@
+@import 'variables';
+@import 'mixins';
+
+.qty-input {
+  display: inline-flex;
+  align-items: center;
+  border: 2px solid $color-border;
+  border-radius: $border-radius-sm;
+  overflow: hidden;
+  transition: border-color $transition-fast;
+
+  &:focus-within {
+    border-color: $color-primary;
+  }
+
+  &--disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  &__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 32px;
+    background: $color-bg;
+    border: none;
+    cursor: pointer;
+    color: $color-text-light;
+    transition: background $transition-fast, color $transition-fast;
+    flex-shrink: 0;
+
+    &:hover:not(:disabled) {
+      background: $color-primary-bg;
+      color: $color-primary;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      color: $color-text-muted;
+      background: $color-bg;
+    }
+
+    &--decrease {
+      border-right: 1px solid $color-border;
+    }
+
+    &--increase {
+      border-left: 1px solid $color-border;
+    }
+  }
+
+  &__field {
+    width: 44px;
+    height: 32px;
+    border: none;
+    outline: none;
+    text-align: center;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    color: $color-text;
+    background: $color-bg-white;
+    appearance: textfield;
+    -moz-appearance: textfield;
+
+    // Remove number input spinners
+    &::-webkit-inner-spin-button,
+    &::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    &:disabled {
+      background: $color-bg;
+      cursor: not-allowed;
+    }
+  }
+}
+

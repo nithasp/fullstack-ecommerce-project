@@ -1,0 +1,42 @@
+<div class="confirm-overlay"
+  *ngIf="config"
+  [class.confirm-overlay--closing]="closing"
+  (click)="onOverlayClick()">
+
+  <div class="confirm-dialog"
+    [class.confirm-dialog--closing]="closing"
+    [class.confirm-dialog--danger]="config.danger"
+    (click)="$event.stopPropagation()">
+
+    <div class="confirm-dialog__icon" [class.confirm-dialog__icon--danger]="config.danger">
+      <svg *ngIf="config.danger" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round" width="32" height="32" aria-hidden="true">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <svg *ngIf="!config.danger" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round" width="32" height="32" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    </div>
+
+    <h2 class="confirm-dialog__title">{{ config.title }}</h2>
+    <p class="confirm-dialog__message">{{ config.message }}</p>
+    <div class="confirm-dialog__actions">
+      <button type="button" class="confirm-dialog__cancel" (click)="cancel()">
+        {{ config.cancelText || 'Cancel' }}
+      </button>
+      <button type="button" class="confirm-dialog__confirm"
+        [class.confirm-dialog__confirm--danger]="config.danger"
+        (click)="confirm()">
+        {{ config.confirmText || 'Confirm' }}
+      </button>
+    </div>
+
+  </div>
+</div>

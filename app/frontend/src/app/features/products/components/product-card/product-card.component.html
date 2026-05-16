@@ -1,0 +1,33 @@
+<div class="product-card">
+  <a [routerLink]="['/products', product.id]" class="product-card__image-link">
+    <img
+      [src]="product.image"
+      [alt]="product.name"
+      class="product-card__image"
+      loading="lazy"
+    />
+  </a>
+
+  <div class="product-card__body">
+    <span class="product-card__category">{{ product.category }}</span>
+
+    <a [routerLink]="['/products', product.id]" class="product-card__name-link">
+      <h3 class="product-card__name">{{ product.name }}</h3>
+    </a>
+
+    <p class="product-card__description">{{ product.description | truncate:80 }}</p>
+
+    <div class="product-card__rating">
+      <span *ngFor="let star of ratingStars" class="product-card__star"
+            [class.product-card__star--filled]="star <= product.overallRating"
+            [class.product-card__star--half]="star > product.overallRating && star - 1 < product.overallRating">
+        &#9733;
+      </span>
+      <span class="product-card__rating-value">({{ product.overallRating }})</span>
+    </div>
+
+    <div class="product-card__footer">
+      <span class="product-card__price">${{ product.price | number:'1.2-2' }}</span>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+@import 'variables';
+
+.main-content {
+  min-height: calc(100vh - $navbar-height);
+  padding: calc($navbar-height / 2.5);
+}
+
+.app-init {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: $color-bg;
+}

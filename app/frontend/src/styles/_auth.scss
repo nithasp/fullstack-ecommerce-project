@@ -1,0 +1,143 @@
+@import 'variables';
+@import 'mixins';
+
+.auth-page {
+  @include flex-center;
+  min-height: calc(100vh - $navbar-height);
+  padding: $spacing-lg;
+}
+
+.auth-card {
+  @include card;
+  width: 100%;
+  max-width: 440px;
+  padding: $spacing-2xl;
+
+  &__header {
+    text-align: center;
+    margin-bottom: $spacing-xl;
+  }
+
+  &__icon {
+    @include flex-center;
+    width: 56px;
+    height: 56px;
+    margin: 0 auto $spacing-md;
+    background: $color-primary-bg;
+    border-radius: $border-radius-full;
+
+    svg {
+      width: 28px;
+      height: 28px;
+      color: $color-primary;
+    }
+  }
+
+  &__header h2 {
+    font-size: $font-size-2xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+    margin-bottom: $spacing-xs;
+  }
+
+  &__subtitle {
+    color: $color-text-light;
+    font-size: $font-size-sm;
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-lg;
+  }
+
+  &__footer {
+    text-align: center;
+    margin-top: $spacing-xl;
+    padding-top: $spacing-lg;
+    border-top: 1px solid $color-border;
+
+    p {
+      color: $color-text-light;
+      font-size: $font-size-sm;
+    }
+
+    a {
+      color: $color-primary;
+      font-weight: $font-weight-semibold;
+      text-decoration: none;
+      transition: color $transition-fast;
+
+      &:hover { color: $color-primary-dark; }
+    }
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.form-label {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $color-text;
+
+  .required { color: $color-error; }
+}
+
+.form-input {
+  width: 100%;
+  padding: $spacing-sm-md $spacing-md;
+  border: 1.5px solid $color-border;
+  border-radius: $border-radius-md;
+  font-size: $font-size-base;
+  color: $color-text;
+  background: $color-bg-white;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+  outline: none;
+
+  &::placeholder { color: $color-text-muted; }
+
+  &:focus {
+    border-color: $color-primary;
+    box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+  }
+
+  &--error {
+    border-color: $color-error;
+    &:focus { box-shadow: 0 0 0 3px rgba($color-error, 0.1); }
+  }
+
+  &:disabled {
+    background: $color-bg;
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+}
+
+.form-error {
+  font-size: $font-size-xs;
+  color: $color-error;
+  font-weight: $font-weight-medium;
+  animation: fadeIn 0.2s ease;
+}
+
+.auth-btn {
+  @include button-primary;
+  width: 100%;
+  padding: $spacing-sm-md $spacing-lg;
+  font-size: $font-size-base;
+  margin-top: $spacing-sm;
+
+  &__loading {
+    @include flex-center;
+    gap: $spacing-sm;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,13 @@
+<ng-container *ngIf="authReady; else initializing">
+  <app-navbar></app-navbar>
+  <main class="main-content">
+    <router-outlet></router-outlet>
+  </main>
+  <app-dialog-confirm></app-dialog-confirm>
+</ng-container>
+
+<ng-template #initializing>
+  <div class="app-init">
+    <app-loading-spinner size="large"></app-loading-spinner>
+  </div>
+</ng-template>

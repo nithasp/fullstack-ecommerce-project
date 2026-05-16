@@ -1,0 +1,238 @@
+<div class="cart-page">
+  <h1 class="cart-page__title">Shopping Cart</h1>
+
+  <div *ngIf="isLoadingCart" class="cart-page__loading">
+    <app-loading-spinner message="Loading your cart…" layout="block"></app-loading-spinner>
+  </div>
+
+  <div *ngIf="!isLoadingCart && cartItems.length === 0" class="cart-page__empty">
+    <div class="cart-page__empty-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="80" height="80" fill="none"
+        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="21" r="1"></circle>
+        <circle cx="20" cy="21" r="1"></circle>
+        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+      </svg>
+    </div>
+    <h2>Your cart is empty</h2>
+    <p>Looks like you haven't added any products yet.</p>
+    <a routerLink="/products" class="cart-page__continue-btn">Browse Products</a>
+  </div>
+
+  <div *ngIf="!isLoadingCart && cartItems.length > 0">
+
+    <div class="delivery-bar">
+      <div class="delivery-bar__heading">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16"
+          aria-hidden="true">
+          <path fill-rule="evenodd"
+            d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+            clip-rule="evenodd" />
+        </svg>
+        Delivery Address
+      </div>
+
+      <div class="delivery-bar__loading" *ngIf="isLoadingAddresses">
+        <app-loading-spinner message="Loading delivery address…" size="small" layout="inline"></app-loading-spinner>
+      </div>
+
+      <ng-container *ngIf="!isLoadingAddresses">
+        <div class="delivery-bar__row" *ngIf="selectedAddress; else noAddrBar">
+          <div class="delivery-bar__info">
+            <span class="delivery-bar__name">{{ selectedAddress.fullName }}</span>
+            <span class="delivery-bar__phone">({{ selectedAddress.phone }})</span>
+            <span class="delivery-bar__sep" aria-hidden="true">|</span>
+            <span class="delivery-bar__address">{{ selectedAddress.address }}, {{ selectedAddress.city }}</span>
+            <span class="delivery-bar__default" *ngIf="selectedAddress.isDefault">Default</span>
+          </div>
+          <button class="delivery-bar__change" (click)="isAddressDialogOpen = true">Change</button>
+        </div>
+
+        <ng-template #noAddrBar>
+          <div class="delivery-bar__empty">
+            <span>No delivery address selected.</span>
+            <button class="delivery-bar__add" (click)="isAddressDialogOpen = true">+ Add Address</button>
+          </div>
+        </ng-template>
+      </ng-container>
+    </div>
+
+    <div class="cart-page__content">
+      <div class="cart-page__items">
+        <div *ngFor="let group of shopGroups" class="shop-group">
+          <div class="shop-group__header">
+            <label class="shop-group__checkbox-label">
+              <input type="checkbox" class="shop-group__checkbox" [checked]="isShopAllSelected(group)"
+                [indeterminate]="isShopIndeterminate(group)" (change)="toggleShop(group)" />
+              <span class="custom-checkbox" [class.custom-checkbox--checked]="isShopAllSelected(group)"
+                [class.custom-checkbox--indeterminate]="isShopIndeterminate(group)">
+                <svg *ngIf="isShopAllSelected(group)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                  fill="currentColor" width="12" height="12">
+                  <path fill-rule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clip-rule="evenodd" />
+                </svg>
+                <svg *ngIf="isShopIndeterminate(group)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                  fill="currentColor" width="12" height="12">
+                  <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                </svg>
+              </span>
+            </label>
+            <svg class="shop-group__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+              width="18" height="18" aria-hidden="true">
+              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" />
+              <path fill-rule="evenodd"
+                d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"
+                clip-rule="evenodd" />
+            </svg>
+            <span class="shop-group__name">{{ group.shopName }}</span>
+          </div>
+
+          <div *ngFor="let item of group.items" class="cart-item" [class.cart-item--unselected]="!isItemSelected(item)">
+            <label class="cart-item__checkbox-label">
+              <input type="checkbox" class="cart-item__checkbox" [checked]="isItemSelected(item)"
+                (change)="toggleItem(item)" />
+              <span class="custom-checkbox" [class.custom-checkbox--checked]="isItemSelected(item)">
+                <svg *ngIf="isItemSelected(item)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                  fill="currentColor" width="12" height="12">
+                  <path fill-rule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clip-rule="evenodd" />
+                </svg>
+              </span>
+            </label>
+
+            <a [routerLink]="['/products', item.product.id]" class="cart-item__image-link">
+              <img [src]="item.selectedType?.image || item.product.image" [alt]="item.product.name"
+                class="cart-item__image" />
+            </a>
+
+            <div class="cart-item__details">
+              <h3 class="cart-item__name">{{ item.product.name }}</h3>
+              <p *ngIf="item.selectedType" class="cart-item__variant">
+                Color: {{ item.selectedType.color }}
+              </p>
+              <p class="cart-item__price">${{ getItemPrice(item) | number:'1.2-2' }}</p>
+            </div>
+
+            <div class="cart-item__actions">
+              <div class="cart-item__qty-wrapper">
+                <app-quantity-input [ngModel]="item.quantity" (ngModelChange)="updateQuantity(item, $event)"
+                  [name]="'qty-' + item.product.id + '-' + (item.selectedType?._id || 'default')" [min]="1"
+                  [max]="getItemStock(item)" [disabled]="isItemLoading(item) || isCheckingOut"></app-quantity-input>
+                <p *ngIf="item.quantity >= getItemStock(item)" class="cart-item__stock-warning">
+                  Only {{ getItemStock(item) }} {{ getItemStock(item) === 1 ? 'item' : 'items' }} left in stock
+                </p>
+              </div>
+
+              <span class="cart-item__subtotal">
+                ${{ getItemSubtotal(item) | number:'1.2-2' }}
+              </span>
+
+              <button class="cart-item__remove" (click)="removeItem(item)" aria-label="Remove item"
+                [disabled]="isItemLoading(item) || isCheckingOut">
+                &times;
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="cart-page__sidebar">
+        <div class="sidebar-card">
+          <h3 class="sidebar-card__heading">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"
+              aria-hidden="true">
+              <path fill-rule="evenodd"
+                d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5zm2.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm6.207.293a1 1 0 00-1.414 0l-6 6a1 1 0 101.414 1.414l6-6a1 1 0 000-1.414zM12.5 10a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"
+                clip-rule="evenodd" />
+            </svg>
+            Discount Code
+          </h3>
+          <div class="discount-section__row">
+            <input type="text" class="discount-section__input" [(ngModel)]="discountCode" name="discountCode"
+              placeholder="Enter code..." (keyup.enter)="applyDiscount()" />
+            <button class="discount-section__apply" (click)="applyDiscount()">Apply</button>
+          </div>
+          <p *ngIf="discountSuccess" class="discount-section__success">&#10003; {{ discountSuccess }}</p>
+          <p *ngIf="discountError" class="discount-section__error">{{ discountError }}</p>
+          <div class="discount-section__hints">
+            <span>Available codes:</span>
+            <button class="discount-section__hint-tag" (click)="useHintCode('10%OFF')">10%OFF</button>
+            <button class="discount-section__hint-tag" (click)="useHintCode('SAVE20')">SAVE20</button>
+          </div>
+        </div>
+
+        <div class="sidebar-card">
+          <h3 class="sidebar-card__heading">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"
+              aria-hidden="true">
+              <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+              <path fill-rule="evenodd"
+                d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"
+                clip-rule="evenodd" />
+            </svg>
+            Payment Method
+          </h3>
+          <div class="payment-section__grid">
+            <label *ngFor="let method of paymentMethods" class="payment-chip"
+              [class.payment-chip--selected]="selectedPayment === method.id">
+              <input type="radio" name="payment" [value]="method.id" [(ngModel)]="selectedPayment" />
+              <span class="payment-chip__badge" [style.background]="method.color">{{ method.badge }}</span>
+              <span class="payment-chip__name">{{ method.name }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="cart-summary">
+          <h2 class="cart-summary__title">Order Summary</h2>
+
+          <div class="cart-summary__row">
+            <span>Selected ({{ selectedCount }} {{ selectedCount === 1 ? 'item' : 'items' }})</span>
+            <span>${{ selectedTotal | number:'1.2-2' }}</span>
+          </div>
+
+          <div class="cart-summary__row cart-summary__row--discount" *ngIf="appliedDiscount > 0">
+            <span>
+              Discount
+              <span class="cart-summary__discount-badge">{{ discountLabel }}</span>
+            </span>
+            <span class="cart-summary__discount-value">
+              &minus;${{ discountAmount | number:'1.2-2' }}
+              <button class="cart-summary__remove-discount" (click)="removeDiscount()"
+                title="Remove discount">&times;</button>
+            </span>
+          </div>
+
+          <div class="cart-summary__row">
+            <span>Shipping</span>
+            <span class="cart-summary__free">Free</span>
+          </div>
+
+          <div class="cart-summary__total">
+            <span>Total</span>
+            <span>${{ cartTotalAfterDiscount | number:'1.2-2' }}</span>
+          </div>
+
+          <button class="cart-summary__checkout-btn" (click)="onProceedToCheckout()"
+            [disabled]="isCheckingOut">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="18" height="18"
+              aria-hidden="true">
+              <path fill-rule="evenodd"
+                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                clip-rule="evenodd" />
+            </svg>
+            Checkout ({{ selectedCount }})
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <app-address-dialog *ngIf="isAddressDialogOpen"
+    [(selectedAddressId)]="selectedAddressId"
+    (addressesChange)="onAddressesChange($event)"
+    (closed)="isAddressDialogOpen = false"></app-address-dialog>
+</div>

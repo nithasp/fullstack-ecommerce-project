@@ -1,0 +1,52 @@
+{
+  "name": "storefront-backend",
+  "version": "1.0.0",
+  "description": "A backend API for an online store",
+  "main": "server.ts",
+  "scripts": {
+    "start": "node dist/server.js",
+    "postinstall": "npm run build",
+    "watch": "tsc-watch --onSuccess \"node ./dist/server.js\"",
+    "build": "npx tsc",
+    "test": "cross-env ENV=test npm run build && db-migrate --env test up && cross-env ENV=test jasmine && db-migrate --env test reset",
+    "migrate:up": "db-migrate up",
+    "migrate:down": "db-migrate down",
+    "migrate:reset": "db-migrate reset"
+  },
+  "keywords": [
+    "api",
+    "storefront",
+    "backend"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "db-migrate": "^0.11.14",
+    "db-migrate-pg": "^1.5.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/express-rate-limit": "^5.1.3",
+    "@types/jasmine": "^5.1.4",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/pg": "^8.10.9",
+    "@types/supertest": "^6.0.2",
+    "cross-env": "^10.1.0",
+    "jasmine": "^5.1.0",
+    "jasmine-spec-reporter": "^7.0.0",
+    "supertest": "^6.3.3",
+    "ts-node": "^10.9.2",
+    "tsc-watch": "^6.0.4",
+    "typescript": "^5.3.3"
+  }
+}

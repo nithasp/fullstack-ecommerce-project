@@ -1,0 +1,115 @@
+<div *ngIf="loading" class="product-detail__loading">
+  <app-loading-spinner message="Loading product..." layout="block"></app-loading-spinner>
+</div>
+
+<div *ngIf="!loading && !product" class="product-detail__not-found animate-fade-in">
+  <h2>Product Not Found</h2>
+  <p>The product you're looking for doesn't exist.</p>
+  <button class="product-detail__back-btn" (click)="goBack()">Back to Products</button>
+</div>
+
+<div *ngIf="product" class="product-detail animate-fade-in">
+  <button class="product-detail__back-link" (click)="goBack()">
+    &larr; Back to Products
+  </button>
+
+  <div class="product-detail__content">
+    <div class="product-detail__gallery">
+      <div class="product-detail__main-image-wrapper">
+        <img [src]="selectedImage" [alt]="product.name" class="product-detail__main-image" />
+      </div>
+      <div class="product-detail__thumbnails">
+        <img
+          *ngFor="let img of product.previewImg"
+          [src]="img"
+          [alt]="product.name"
+          class="product-detail__thumbnail"
+          [class.product-detail__thumbnail--active]="selectedImage === img"
+          (click)="selectImage(img)"
+          loading="lazy"
+        />
+      </div>
+    </div>
+
+    <div class="product-detail__info">
+      <span class="product-detail__category">{{ product.category }}</span>
+      <h1 class="product-detail__name">{{ product.name }}</h1>
+
+      <div class="product-detail__rating">
+        <span *ngFor="let star of ratingStars" class="product-detail__star"
+              [class.product-detail__star--filled]="star <= product.overallRating">
+          &#9733;
+        </span>
+        <span class="product-detail__rating-text">
+          {{ product.overallRating }} ({{ product.reviews.length }} reviews)
+        </span>
+      </div>
+
+      <p class="product-detail__price">${{ currentPrice | number:'1.2-2' }}</p>
+
+      <p class="product-detail__description">{{ product.description }}</p>
+
+      <div *ngIf="product.types.length > 1" class="product-detail__types">
+        <label class="product-detail__label">Color:</label>
+        <div class="product-detail__type-options">
+          <button
+            *ngFor="let type of product.types"
+            class="product-detail__type-btn"
+            [class.product-detail__type-btn--active]="selectedType?._id === type._id"
+            (click)="selectType(type)"
+          >
+            {{ type.color }}
+          </button>
+        </div>
+      </div>
+
+      <div class="product-detail__quantity">
+        <label class="product-detail__label">Quantity:</label>
+        <app-quantity-input
+          [(ngModel)]="selectedQuantity"
+          (ngModelChange)="onQuantityChange($event)"
+          name="quantity"
+          [min]="1"
+          [max]="currentStock > 0 ? currentStock : 1"
+          [disabled]="currentStock === 0"
+        ></app-quantity-input>
+        <p *ngIf="isQuantityAtLimit" class="product-detail__stock-warning">
+          Only {{ currentStock }} {{ currentStock === 1 ? 'item' : 'items' }} left in stock
+        </p>
+      </div>
+
+      <div class="product-detail__stock">
+        <span *ngIf="currentStock > 0" class="product-detail__in-stock">
+          In Stock ({{ currentStock }} available)
+        </span>
+        <span *ngIf="currentStock === 0" class="product-detail__out-of-stock">
+          Out of Stock
+        </span>
+      </div>
+
+      <button class="product-detail__add-btn" (click)="addToCart()"
+        [disabled]="(product.types.length > 1 && !selectedType) || currentStock === 0 || isAdding">
+        Add to Cart
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="product.reviews.length > 0" class="product-detail__reviews">
+    <h2 class="product-detail__reviews-title">Customer Reviews</h2>
+    <div class="product-detail__reviews-list">
+      <div *ngFor="let review of product.reviews" class="product-detail__review animate-slide-up">
+        <div class="product-detail__review-header">
+          <div class="product-detail__review-stars">
+            <span *ngFor="let star of ratingStars"
+                  class="product-detail__star"
+                  [class.product-detail__star--filled]="star <= review.star">
+              &#9733;
+            </span>
+          </div>
+          <span class="product-detail__review-author">{{ review.userName }}</span>
+        </div>
+        <p class="product-detail__review-comment">{{ review.comment }}</p>
+      </div>
+    </div>
+  </div>
+</div>

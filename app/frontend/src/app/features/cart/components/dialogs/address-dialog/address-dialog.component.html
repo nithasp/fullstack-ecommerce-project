@@ -1,0 +1,118 @@
+<div class="address-dialog-overlay" [class.address-dialog-overlay--closing]="closing" (click)="close()"
+  (animationend)="onOverlayAnimationDone($event)">
+  <div class="address-dialog" [class.address-dialog--closing]="closing" (click)="$event.stopPropagation()">
+
+    <ng-container *ngIf="dialogMode === 'list'">
+      <div class="address-dialog__header">
+        <h2 class="address-dialog__title">My Address</h2>
+        <button class="address-dialog__close" (click)="close()" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="address-dialog__loading" *ngIf="isLoadingAddresses">
+        <app-loading-spinner message="Loading addresses…" layout="block"></app-loading-spinner>
+      </div>
+
+      <div class="address-dialog__empty" *ngIf="!isLoadingAddresses && addresses.length === 0">
+        <p>No addresses yet. Add your first address below.</p>
+      </div>
+
+      <div class="address-dialog__list" *ngIf="!isLoadingAddresses && addresses.length > 0">
+        <label *ngFor="let address of addresses" class="address-list-item"
+          [class.address-list-item--selected]="localSelectedId === address.id">
+          <input type="radio" name="addressSelect" [value]="address.id" [ngModel]="localSelectedId"
+            (ngModelChange)="onRadioChange($event)" />
+          <div class="address-list-item__radio-dot"></div>
+
+          <div class="address-list-item__body">
+            <div class="address-list-item__top">
+              <span class="address-list-item__name">{{ address.fullName }}</span>
+              <span class="address-list-item__phone">{{ address.phone }}</span>
+              <button type="button" class="address-list-item__edit"
+                (click)="openEditMode(address, $event)">Edit</button>
+            </div>
+            <p class="address-list-item__address">{{ address.address }}</p>
+            <p class="address-list-item__city">{{ address.city }}</p>
+            <div class="address-list-item__tags">
+              <span class="address-list-item__default-badge" *ngIf="address.isDefault">Default</span>
+              <span class="address-list-item__label-badge">{{ address.label | titlecase }}</span>
+              <button type="button" class="address-list-item__delete"
+                [disabled]="isDeleting"
+                (click)="promptDelete(address, $event)"
+                *ngIf="addresses.length > 1">Delete</button>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <div class="address-dialog__footer">
+        <button class="address-dialog__add-btn" (click)="openAddMode()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16"
+            aria-hidden="true">
+            <path fill-rule="evenodd"
+              d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+              clip-rule="evenodd" />
+          </svg>
+          Add New Address
+        </button>
+        <button class="address-dialog__confirm-btn" (click)="confirmSelection()"
+          [disabled]="addresses.length === 0">Confirm</button>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="dialogMode === 'add' || dialogMode === 'edit'">
+      <div class="address-dialog__header">
+        <button class="address-dialog__back" (click)="backToList()" aria-label="Back to list">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="18" height="18"
+            aria-hidden="true">
+            <path fill-rule="evenodd"
+              d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+              clip-rule="evenodd" />
+          </svg>
+        </button>
+        <h2 class="address-dialog__title">{{ dialogMode === 'add' ? 'New Address' : 'Edit Address' }}</h2>
+        <button class="address-dialog__close" (click)="close()" aria-label="Close">&times;</button>
+      </div>
+
+      <form class="address-dialog__form" (ngSubmit)="saveAddress()">
+        <div class="address-form-row">
+          <app-input-field name="afFullName" label="Full Name" placeholder="Full Name" [required]="true"
+            [forceTouch]="formSubmitted" [(ngModel)]="addressForm.fullName"></app-input-field>
+          <app-input-field name="afPhone" label="Phone Number" type="tel" placeholder="Phone Number"
+            [forceTouch]="formSubmitted" [(ngModel)]="addressForm.phone"></app-input-field>
+        </div>
+
+        <app-input-field name="afCity" label="City / Province" placeholder="City, Province, Postal Code"
+          [required]="true" [forceTouch]="formSubmitted" [(ngModel)]="addressForm.city"></app-input-field>
+
+        <app-input-field name="afAddress" label="Street Address" placeholder="Street Name, Building, House No."
+          [required]="true" [forceTouch]="formSubmitted" [(ngModel)]="addressForm.address"></app-input-field>
+
+        <div class="address-form-field">
+          <label class="address-form-field__label">Label As</label>
+          <div class="address-label-options">
+            <button type="button" class="address-label-btn"
+              [class.address-label-btn--active]="addressForm.label === 'home'" (click)="setLabel('home')">Home</button>
+            <button type="button" class="address-label-btn"
+              [class.address-label-btn--active]="addressForm.label === 'work'" (click)="setLabel('work')">Work</button>
+            <button type="button" class="address-label-btn"
+              [class.address-label-btn--active]="addressForm.label === 'other'"
+              (click)="setLabel('other')">Other</button>
+          </div>
+        </div>
+
+        <label class="address-form-checkbox">
+          <input type="checkbox" [(ngModel)]="addressForm.isDefault" name="afDefault" />
+          <span>Set as Default Address</span>
+        </label>
+
+        <div class="address-dialog__actions">
+          <button type="button" class="address-dialog__cancel" (click)="backToList()" [disabled]="isSaving">Cancel</button>
+          <button type="submit" class="address-dialog__save" [disabled]="isSaving">
+            {{ isSaving ? 'Saving…' : 'Submit' }}
+          </button>
+        </div>
+      </form>
+    </ng-container>
+
+  </div>
+</div>

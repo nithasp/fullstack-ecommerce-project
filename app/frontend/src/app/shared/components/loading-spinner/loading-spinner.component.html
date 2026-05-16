@@ -1,0 +1,10 @@
+<div class="loading-spinner" [class.loading-spinner--block]="layout === 'block'"
+  [class.loading-spinner--inline]="layout === 'inline'"
+  [class.loading-spinner--small]="size === 'small'"
+  [class.loading-spinner--medium]="size === 'medium'"
+  [class.loading-spinner--large]="size === 'large'"
+  [class.loading-spinner--default]="variant === 'default'"
+  [class.loading-spinner--light]="variant === 'light'">
+  <div class="loading-spinner__ring"></div>
+  <span *ngIf="message" class="loading-spinner__message">{{ message }}</span>
+</div>

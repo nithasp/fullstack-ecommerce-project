@@ -1,0 +1,53 @@
+<div class="product-list animate-fade-in">
+  <div class="product-list__header">
+    <h1 class="product-list__title">Our Products</h1>
+    <p class="product-list__subtitle">Discover amazing products at great prices</p>
+  </div>
+
+  <div class="product-list__filters">
+    <div class="product-list__search">
+      <input
+        type="text"
+        class="product-list__search-input"
+        placeholder="Search products..."
+        [ngModel]="searchTerm"
+        (ngModelChange)="onSearchChange($event)"
+        name="search"
+      />
+    </div>
+
+    <div class="product-list__categories">
+      <button
+        class="product-list__category-btn"
+        [class.product-list__category-btn--active]="selectedCategory === ''"
+        (click)="filterByCategory('')"
+      >
+        All
+      </button>
+      <button
+        *ngFor="let category of categories"
+        class="product-list__category-btn"
+        [class.product-list__category-btn--active]="selectedCategory === category"
+        (click)="filterByCategory(category)"
+      >
+        {{ category }}
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="isLoading" class="product-list__loading">
+    <app-loading-spinner message="Loading products..." layout="block"></app-loading-spinner>
+  </div>
+
+  <div *ngIf="!isLoading && filteredProducts.length === 0" class="product-list__empty">
+    <p>No products found. Try a different search or category.</p>
+  </div>
+
+  <div *ngIf="!isLoading" class="product-list__grid">
+    <app-product-card
+      *ngFor="let product of filteredProducts; let i = index"
+      [product]="product"
+      class="animate-slide-up animate-delay-{{ i + 1 }}"
+    ></app-product-card>
+  </div>
+</div>

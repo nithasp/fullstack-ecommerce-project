@@ -1,0 +1,25 @@
+{
+  "name": "storefront-fullstack",
+  "version": "1.0.0",
+  "description": "Full-stack e-commerce application — Angular 18 frontend + Node/Express backend + PostgreSQL",
+  "private": true,
+  "scripts": {
+    "install:backend": "cd app/backend && npm install",
+    "install:frontend": "cd app/frontend && npm install",
+    "install": "npm run install:backend && npm run install:frontend",
+
+    "build:backend": "cd app/backend && npm run build",
+    "build:frontend": "cd app/frontend && npm run build -- --configuration production",
+    "build": "npm run build:backend && npm run build:frontend",
+
+    "test:backend": "cd app/backend && npm test",
+    "test:frontend": "cd app/frontend && npm run test -- --watch=false --browsers=ChromeHeadless",
+    "test": "npm run test:backend && npm run test:frontend",
+
+    "start:backend": "cd app/backend && npm start",
+    "start:frontend": "cd app/frontend && npm start",
+
+    "deploy:backend": "cd app/backend && npm run build && eb deploy",
+    "deploy:frontend": "cd app/frontend && npm run build -- --configuration production && aws s3 sync dist/full-stack-javascript-developer-course4-ex-nitha/browser s3://$S3_BUCKET_NAME --delete --acl public-read"
+  }
+}
