@@ -14,6 +14,9 @@ export const config = {
   tokenSecret: process.env.TOKEN_SECRET || 'default-secret-for-dev',
   accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || '15m',
   refreshTokenExpiryMs: 7 * 24 * 60 * 60 * 1000,
-  allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:4200',
+  allowedOrigins: (process.env.ALLOWED_ORIGIN || 'http://localhost:4200')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
   port: parseInt(process.env.PORT || '3000', 10),
 };
