@@ -13,6 +13,7 @@ import { config } from './config';
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ origin: config.allowedOrigins, credentials: true }));
 app.use(express.json());
