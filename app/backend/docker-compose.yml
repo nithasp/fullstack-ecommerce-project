@@ -18,5 +18,19 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: .
+    container_name: storefront-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
