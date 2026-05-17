@@ -1,4 +1,5 @@
 [build]
+builder = "NIXPACKS"
 buildCommand = "cd app/backend && npm ci && npm run build"
 
 [deploy]
