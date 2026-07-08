@@ -1,10 +1,8 @@
 import {
   HttpErrorResponse,
-  HttpEvent,
   HttpHandlerFn,
   HttpInterceptorFn,
   HttpRequest,
-  HttpResponse,
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
@@ -12,7 +10,6 @@ import {
   BehaviorSubject,
   catchError,
   filter,
-  map,
   switchMap,
   take,
   throwError,
@@ -20,20 +17,9 @@ import {
 
 import { AuthService } from '../services/auth/auth.service';
 import { NotificationService } from '../services/ui/notification.service';
-import { ApiResponse } from '../models/api.model';
 
 let isRefreshing = false;
 const refreshTokenSubject = new BehaviorSubject<string | null>(null);
-
-function isApiEnvelope(body: unknown): body is ApiResponse<unknown> {
-  return (
-    body !== null &&
-    typeof body === 'object' &&
-    'status' in body &&
-    'message' in body &&
-    'data' in body
-  );
-}
 
 function addToken(req: HttpRequest<unknown>, token: string): HttpRequest<unknown> {
   return req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
@@ -59,12 +45,6 @@ export const authInterceptor: HttpInterceptorFn = (
   const authReq = token ? addToken(req, token) : req;
 
   return next(authReq).pipe(
-    map((event: HttpEvent<unknown>) => {
-      if (event instanceof HttpResponse && isApiEnvelope(event.body)) {
-        return event.clone({ body: event.body.data });
-      }
-      return event;
-    }),
     catchError((error: HttpErrorResponse) =>
       handleError(error, authReq, next, authService, router, notification)
     )

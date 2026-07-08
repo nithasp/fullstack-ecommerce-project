@@ -68,7 +68,7 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
-      req.flush(mockAuthResponse);
+      req.flush({ status: 200, message: 'ok', data: mockAuthResponse });
 
       expect(localStorage.getItem('accessToken')).toBe(mockAuthResponse.accessToken);
       expect(localStorage.getItem('refreshToken')).toBe(mockAuthResponse.refreshToken);
@@ -79,7 +79,7 @@ describe('AuthService', () => {
       service.isLoggedIn$.subscribe((val) => (loggedIn = val));
 
       service.register('u', 'p').subscribe();
-      httpMock.expectOne(`${API}/register`).flush(mockAuthResponse);
+      httpMock.expectOne(`${API}/register`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
 
       expect(loggedIn).toBeTrue();
     });
@@ -111,7 +111,7 @@ describe('AuthService', () => {
 
       const req = httpMock.expectOne(`${API}/login`);
       expect(req.request.method).toBe('POST');
-      req.flush(mockAuthResponse);
+      req.flush({ status: 200, message: 'ok', data: mockAuthResponse });
 
       expect(localStorage.getItem('accessToken')).toBe(mockAuthResponse.accessToken);
     });
@@ -121,7 +121,7 @@ describe('AuthService', () => {
       service.isLoggedIn$.subscribe((val) => (loggedIn = val));
 
       service.login('u', 'p').subscribe();
-      httpMock.expectOne(`${API}/login`).flush(mockAuthResponse);
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
 
       expect(loggedIn).toBeTrue();
     });
@@ -198,7 +198,7 @@ describe('AuthService', () => {
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({ refreshToken: 'old_refresh' });
 
-      req.flush(refreshResponse);
+      req.flush({ status: 200, message: 'ok', data: refreshResponse });
 
       expect(localStorage.getItem('accessToken')).toBe('new_access_token');
     });
@@ -270,7 +270,7 @@ describe('AuthService', () => {
 
     it('should return the stored user after successful login', () => {
       service.login('testuser', 'pass').subscribe();
-      httpMock.expectOne(`${API}/login`).flush(mockAuthResponse);
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
 
       const user = service.getCurrentUser();
       expect(user?.username).toBe('testuser');
