@@ -1,8 +1,8 @@
-import express, { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import Stripe from 'stripe';
 import type { Charges } from 'omise';
 import { CartStore } from '../models/cart';
-import { OrderStore } from '../models/order';
+import { OrderStore, OrderItemInput } from '../models/order';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendSuccess } from '../utils/response';
@@ -27,7 +27,7 @@ const DISCOUNT_CODES: Record<string, number> = {
 async function priceCartSelection(
   userId: number,
   body: { cartItemIds?: unknown; discountCode?: unknown }
-): Promise<{ totalCents: number; orderItems: { productId: number; quantity: number }[] }> {
+): Promise<{ totalCents: number; orderItems: OrderItemInput[] }> {
   const cartItemIds = body.cartItemIds;
   if (!Array.isArray(cartItemIds) || cartItemIds.length === 0)
     throw new AppError('cartItemIds must be a non-empty array', 400);
@@ -46,7 +46,7 @@ async function priceCartSelection(
     throw new AppError('Some items are no longer in your cart. Please refresh and try again.', 400);
 
   let totalCents = 0;
-  const orderItems: { productId: number; quantity: number }[] = [];
+  const orderItems: OrderItemInput[] = [];
   for (const item of items) {
     const typePrice = (item.selectedType as { price?: unknown } | null)?.price;
     const unitCents = Math.round(Number(typePrice ?? item.productPrice) * 100);
@@ -71,7 +71,7 @@ async function cleanupAbandonedOrders(userId: number): Promise<void> {
   const stripeRefs = stale
     .filter((s) => s.provider !== 'omise' && s.paymentRef)
     .map((s) => s.paymentRef as string);
-  if (stripeRefs.length === 0 || !config.stripeSecretKey) return;
+  if (stripeRefs.length === 0 || !config.stripe.secretKey) return;
 
   const stripe = getStripe();
   await Promise.all(stripeRefs.map((id) => stripe.paymentIntents.cancel(id).catch(() => undefined)));
@@ -81,10 +81,10 @@ async function cleanupAbandonedOrders(userId: number): Promise<void> {
 
 /** Publishable key for the frontend to initialize Stripe.js. */
 const getPaymentConfig = asyncHandler(async (_req: Request, res: Response) => {
-  if (!config.stripePublishableKey)
+  if (!config.stripe.publishableKey)
     throw new AppError('Payments are not configured on this server. Set STRIPE_PUBLISHABLE_KEY.', 503);
 
-  sendSuccess(res, { publishableKey: config.stripePublishableKey, currency: config.stripeCurrency }, 'Payment config fetched.');
+  sendSuccess(res, { publishableKey: config.stripe.publishableKey, currency: config.stripe.currency }, 'Payment config fetched.');
 });
 
 /**
@@ -100,14 +100,14 @@ const createPaymentIntent = asyncHandler(async (req: Request, res: Response) => 
   await cleanupAbandonedOrders(userId);
 
   const order = await orderStore.createPendingPaymentOrder(
-    userId, orderItems, totalCents, config.stripeCurrency, 'stripe', 'card'
+    userId, orderItems, totalCents, config.stripe.currency, 'stripe', 'card'
   );
 
   let intent: Stripe.PaymentIntent;
   try {
     intent = await stripe.paymentIntents.create({
       amount: totalCents,
-      currency: config.stripeCurrency,
+      currency: config.stripe.currency,
       payment_method_types: ['card'],
       description: `Storefront order #${order.id}`,
       metadata: { orderId: String(order.id), userId: String(userId) },
@@ -126,7 +126,7 @@ const createPaymentIntent = asyncHandler(async (req: Request, res: Response) => 
       paymentIntentId: intent.id,
       orderId: order.id,
       amount: totalCents,
-      currency: config.stripeCurrency,
+      currency: config.stripe.currency,
     },
     'Payment intent created.',
     201
@@ -170,16 +170,16 @@ const confirmPayment = asyncHandler(async (req: Request, res: Response) => {
  * Stripe webhook — source of truth for payment outcomes. Mounted before
  * express.json() because signature verification needs the raw body.
  */
-const stripeWebhook = async (req: Request, res: Response): Promise<void> => {
+export const stripeWebhook = async (req: Request, res: Response): Promise<void> => {
   const signature = req.headers['stripe-signature'];
-  if (!config.stripeWebhookSecret || !signature) {
+  if (!config.stripe.webhookSecret || !signature) {
     res.status(400).json({ error: 'Stripe webhook is not configured.' });
     return;
   }
 
   let event: Stripe.Event;
   try {
-    event = getStripe().webhooks.constructEvent(req.body, signature, config.stripeWebhookSecret);
+    event = getStripe().webhooks.constructEvent(req.body, signature, config.stripe.webhookSecret);
   } catch {
     res.status(400).json({ error: 'Webhook signature verification failed.' });
     return;
@@ -254,7 +254,7 @@ const getOmiseConfig = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(
     res,
     {
-      currency: config.omiseCurrency,
+      currency: config.omise.currency,
       methods: {
         truemoney: {
           available: available.has('truemoney') || available.has('truemoney_jumpapp'),
@@ -349,7 +349,7 @@ const createOmiseCharge = asyncHandler(async (req: Request, res: Response) => {
   await cleanupAbandonedOrders(userId);
 
   const order = await orderStore.createPendingPaymentOrder(
-    userId, orderItems, totalCents, config.omiseCurrency, 'omise', method
+    userId, orderItems, totalCents, config.omise.currency, 'omise', method
   );
 
   let charge: Charges.ICharge;
@@ -357,12 +357,12 @@ const createOmiseCharge = asyncHandler(async (req: Request, res: Response) => {
     const source = await client.sources.create({
       type: sourceType,
       amount: totalCents,
-      currency: config.omiseCurrency,
+      currency: config.omise.currency,
       ...sourceExtra,
     });
     charge = await client.charges.create({
       amount: totalCents,
-      currency: config.omiseCurrency,
+      currency: config.omise.currency,
       source: source.id,
       return_uri: `${returnOrigin}/cart/confirmation?provider=omise&orderId=${order.id}`,
       description: `Storefront order #${order.id}`,
@@ -382,7 +382,7 @@ const createOmiseCharge = asyncHandler(async (req: Request, res: Response) => {
       chargeId: charge.id,
       authorizeUri: charge.authorize_uri || null,
       amount: totalCents,
-      currency: config.omiseCurrency,
+      currency: config.omise.currency,
     },
     'Omise charge created.',
     201
@@ -447,9 +447,10 @@ const confirmOmisePayment = asyncHandler(async (req: Request, res: Response) => 
 /**
  * Omise webhook — source of truth for payment outcomes. Omise events carry no
  * signature, so the payload is never trusted: the charge is re-fetched from
- * the Omise API and only that verified object drives order state.
+ * the Omise API and only that verified object drives order state. Needs the
+ * JSON-parsed body — mounted after express.json().
  */
-const omiseWebhook = async (req: Request, res: Response): Promise<void> => {
+export const omiseWebhook = async (req: Request, res: Response): Promise<void> => {
   const event = req.body as { object?: string; key?: string; data?: { object?: string; id?: string } };
 
   const isChargeEvent =
@@ -478,24 +479,15 @@ const omiseWebhook = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── Router ───────────────────────────────────────────────────────────────────
 
-export const stripeWebhookRoute = (app: Application) => {
-  app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
-};
+const paymentsRouter = Router();
 
-/** Needs the JSON-parsed body — mount after express.json(). */
-export const omiseWebhookRoute = (app: Application) => {
-  app.post('/webhooks/omise', omiseWebhook);
-};
+paymentsRouter.get('/config', getPaymentConfig);
+paymentsRouter.post('/create-intent', verifyAuthToken, createPaymentIntent);
+paymentsRouter.post('/confirm', verifyAuthToken, confirmPayment);
+paymentsRouter.get('/omise/config', getOmiseConfig);
+paymentsRouter.post('/omise/create-charge', verifyAuthToken, createOmiseCharge);
+paymentsRouter.post('/omise/confirm', verifyAuthToken, confirmOmisePayment);
 
-const paymentRoutes = (app: Application) => {
-  app.get('/payments/config', getPaymentConfig);
-  app.post('/payments/create-intent', verifyAuthToken, createPaymentIntent);
-  app.post('/payments/confirm', verifyAuthToken, confirmPayment);
-  app.get('/payments/omise/config', getOmiseConfig);
-  app.post('/payments/omise/create-charge', verifyAuthToken, createOmiseCharge);
-  app.post('/payments/omise/confirm', verifyAuthToken, confirmOmisePayment);
-};
-
-export default paymentRoutes;
+export default paymentsRouter;

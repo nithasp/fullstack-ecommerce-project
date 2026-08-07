@@ -1,5 +1,10 @@
-import client from '../database';
+import client, { withTransaction } from '../database';
+import { buildSetAssignments } from '../utils/sql';
 import { Product } from '../types/product.types';
+
+const INSERT_PRODUCT_SQL = `
+  INSERT INTO products (name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`;
 
 export class ProductStore {
   async index(): Promise<Product[]> {
@@ -7,91 +12,57 @@ export class ProductStore {
     return rows.map((row) => this.mapRow(row));
   }
 
-  async show(id: number): Promise<Product> {
+  async show(id: number): Promise<Product | null> {
     const { rows } = await client.query('SELECT * FROM products WHERE id=$1', [id]);
-    return rows[0] ? this.mapRow(rows[0]) : rows[0];
+    return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
   async create(product: Product): Promise<Product> {
-    const { rows } = await client.query(
-      `INSERT INTO products (name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-      [
-        product.name,
-        product.price,
-        product.category || null,
-        product.image || null,
-        product.description || null,
-        JSON.stringify(product.previewImg || []),
-        JSON.stringify(product.types || []),
-        JSON.stringify(product.reviews || []),
-        product.overallRating || 0,
-        product.stock || 0,
-        product.isActive !== undefined ? product.isActive : true,
-        product.shopId || null,
-        product.shopName || null,
-      ]
-    );
+    const { rows } = await client.query(INSERT_PRODUCT_SQL, this.toInsertValues(product));
     return this.mapRow(rows[0]);
   }
 
-  async update(id: number, product: Partial<Product>): Promise<Product> {
-    const fields: string[] = [];
-    const values: (string | number | boolean)[] = [];
-    let i = 1;
+  /** Insert all products in one transaction — either every row is created or none. */
+  async bulkCreate(products: Product[]): Promise<Product[]> {
+    return withTransaction(async (tx) => {
+      const results: Product[] = [];
+      for (const product of products) {
+        const { rows } = await tx.query(INSERT_PRODUCT_SQL, this.toInsertValues(product));
+        results.push(this.mapRow(rows[0]));
+      }
+      return results;
+    });
+  }
 
-    if (product.name)                  { fields.push(`name=$${i++}`);           values.push(product.name); }
-    if (product.price !== undefined)   { fields.push(`price=$${i++}`);          values.push(product.price); }
-    if (product.category !== undefined){ fields.push(`category=$${i++}`);       values.push(product.category as string); }
-    if (product.image !== undefined)   { fields.push(`image=$${i++}`);          values.push(product.image as string); }
-    if (product.description !== undefined){ fields.push(`description=$${i++}`); values.push(product.description as string); }
-    if (product.previewImg !== undefined) { fields.push(`preview_img=$${i++}`); values.push(JSON.stringify(product.previewImg)); }
-    if (product.types !== undefined)   { fields.push(`types=$${i++}`);          values.push(JSON.stringify(product.types)); }
-    if (product.reviews !== undefined) { fields.push(`reviews=$${i++}`);        values.push(JSON.stringify(product.reviews)); }
-    if (product.overallRating !== undefined){ fields.push(`overall_rating=$${i++}`); values.push(product.overallRating); }
-    if (product.stock !== undefined)   { fields.push(`stock=$${i++}`);          values.push(product.stock); }
-    if (product.isActive !== undefined){ fields.push(`is_active=$${i++}`);      values.push(product.isActive); }
-    if (product.shopId !== undefined)  { fields.push(`shop_id=$${i++}`);        values.push(product.shopId as string); }
-    if (product.shopName !== undefined){ fields.push(`shop_name=$${i++}`);      values.push(product.shopName as string); }
+  async update(id: number, product: Partial<Product>): Promise<Product | null> {
+    const { assignments, values } = buildSetAssignments({
+      name: product.name,
+      price: product.price,
+      category: product.category,
+      image: product.image,
+      description: product.description,
+      preview_img: product.previewImg !== undefined ? JSON.stringify(product.previewImg) : undefined,
+      types: product.types !== undefined ? JSON.stringify(product.types) : undefined,
+      reviews: product.reviews !== undefined ? JSON.stringify(product.reviews) : undefined,
+      overall_rating: product.overallRating,
+      stock: product.stock,
+      is_active: product.isActive,
+      shop_id: product.shopId,
+      shop_name: product.shopName,
+    });
+    if (assignments.length === 0) return this.show(id);
 
     values.push(id);
     const { rows } = await client.query(
-      `UPDATE products SET ${fields.join(', ')} WHERE id=$${i} RETURNING *`,
+      `UPDATE products SET ${assignments.join(', ')} WHERE id=$${values.length} RETURNING *`,
       values
     );
-    return rows[0] ? this.mapRow(rows[0]) : rows[0];
+    return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
-  async delete(id: number): Promise<Product> {
+  async delete(id: number): Promise<Product | null> {
     const { rows } = await client.query('DELETE FROM products WHERE id=$1 RETURNING *', [id]);
-    return rows[0] ? this.mapRow(rows[0]) : rows[0];
-  }
-
-  async bulkCreate(products: Product[]): Promise<Product[]> {
-    const results: Product[] = [];
-    for (const product of products) {
-      const { rows } = await client.query(
-        `INSERT INTO products (name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-        [
-          product.name,
-          product.price,
-          product.category || null,
-          product.image || null,
-          product.description || null,
-          JSON.stringify(product.previewImg || []),
-          JSON.stringify(product.types || []),
-          JSON.stringify(product.reviews || []),
-          product.overallRating || 0,
-          product.stock || 0,
-          product.isActive !== undefined ? product.isActive : true,
-          product.shopId || null,
-          product.shopName || null,
-        ]
-      );
-      results.push(this.mapRow(rows[0]));
-    }
-    return results;
+    return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
   async mostPopular(limit: number = 5): Promise<Product[]> {
@@ -110,6 +81,24 @@ export class ProductStore {
       [category]
     );
     return rows.map((row) => this.mapRow(row));
+  }
+
+  private toInsertValues(product: Product): unknown[] {
+    return [
+      product.name,
+      product.price,
+      product.category || null,
+      product.image || null,
+      product.description || null,
+      JSON.stringify(product.previewImg || []),
+      JSON.stringify(product.types || []),
+      JSON.stringify(product.reviews || []),
+      product.overallRating || 0,
+      product.stock || 0,
+      product.isActive !== undefined ? product.isActive : true,
+      product.shopId || null,
+      product.shopName || null,
+    ];
   }
 
   private normalizeType(t: Record<string, unknown>) {

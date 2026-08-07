@@ -6,11 +6,11 @@ let stripeClient: Stripe | null = null;
 
 /** Lazily create the Stripe client so the server can boot without keys (payment routes will 503). */
 export function getStripe(): Stripe {
-  if (!config.stripeSecretKey) {
+  if (!config.stripe.secretKey) {
     throw new AppError('Payments are not configured on this server. Set STRIPE_SECRET_KEY.', 503);
   }
   if (!stripeClient) {
-    stripeClient = new Stripe(config.stripeSecretKey);
+    stripeClient = new Stripe(config.stripe.secretKey);
   }
   return stripeClient;
 }

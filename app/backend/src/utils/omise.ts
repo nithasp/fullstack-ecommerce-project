@@ -9,12 +9,12 @@ let omiseClient: OmiseClient | null = null;
 
 /** Lazily create the Omise client so the server can boot without keys (Omise routes will 503). */
 export function getOmise(): OmiseClient {
-  if (!config.omiseSecretKey) {
+  if (!config.omise.secretKey) {
     throw new AppError('Omise payments are not configured on this server. Set OMISE_SECRET_KEY.', 503);
   }
   if (!omiseClient) {
     // Pin the API version the omise-node 1.x resources are built against.
-    omiseClient = Omise({ secretKey: config.omiseSecretKey, omiseVersion: '2019-05-29' });
+    omiseClient = Omise({ secretKey: config.omise.secretKey, omiseVersion: '2019-05-29' });
   }
   return omiseClient;
 }

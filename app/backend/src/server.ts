@@ -1,57 +1,19 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
-import authRoutes from './handlers/auth';
-import userRoutes from './handlers/users';
-import productRoutes from './handlers/products';
-import orderRoutes from './handlers/orders';
-import cartRoutes from './handlers/cart';
-import addressRoutes from './handlers/addresses';
-import paymentRoutes, { stripeWebhookRoute, omiseWebhookRoute } from './handlers/payments';
-import { errorMiddleware } from './utils/response';
+import app from './app';
+import pool from './database';
 import { config } from './config';
 
-const app = express();
-
-app.set('trust proxy', 1);
-app.use(helmet());
-app.use(cors({ origin: config.allowedOrigins, credentials: true }));
-// Stripe webhook needs the raw request body for signature verification,
-// so its route is registered before the global JSON parser.
-stripeWebhookRoute(app);
-app.use(express.json());
-// Omise webhooks are unsigned JSON — the handler re-fetches the charge from
-// the Omise API instead of trusting the payload, so the parsed body is fine.
-omiseWebhookRoute(app);
-app.set('etag', false);
-
-const authLimiter = process.env.ENV === 'test'
-  ? undefined
-  : rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 20,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: { error: 'Too many requests. Please wait a moment and try again.', code: 'rate_limited' },
-    });
-
-app.get('/', (_req: Request, res: Response) => {
-  res.json({ message: 'Storefront API is running!' });
+const server = app.listen(config.port, () => {
+  console.log(`Server running on port ${config.port}`);
 });
 
-authRoutes(app, authLimiter);
-userRoutes(app);
-productRoutes(app);
-orderRoutes(app);
-cartRoutes(app);
-addressRoutes(app);
-paymentRoutes(app);
+/** Stop accepting connections, drain in-flight requests, then close the DB pool. */
+const shutdown = () => {
+  server.close(() => {
+    void pool.end().finally(() => process.exit(0));
+  });
+  // Fallback if connections refuse to drain in time.
+  setTimeout(() => process.exit(1), 10_000).unref();
+};
 
-app.use(errorMiddleware);
-
-if (process.env.ENV !== 'test') {
-  app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
-}
-
-export default app;
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

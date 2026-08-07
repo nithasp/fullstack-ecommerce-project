@@ -78,7 +78,7 @@ describe('Product Model', () => {
   it('show method should return the correct product', async () => {
     const products = await store.index();
     const result = await store.show(products[0].id as number);
-    expect(result.id).toBe(products[0].id);
+    expect(result?.id).toBe(products[0].id);
   });
 
   it('getByCategory method should return products in the category', async () => {
@@ -104,10 +104,10 @@ describe('Product Model', () => {
       description: 'Updated description',
       stock: 100
     });
-    expect(result.name).toBe('Updated Product');
-    expect(parseFloat(result.price as unknown as string)).toBe(39.99);
-    expect(result.description).toBe('Updated description');
-    expect(result.stock).toBe(100);
+    expect(result?.name).toBe('Updated Product');
+    expect(parseFloat(result?.price as unknown as string)).toBe(39.99);
+    expect(result?.description).toBe('Updated description');
+    expect(result?.stock).toBe(100);
   });
 
   it('delete method should remove the product', async () => {
@@ -119,7 +119,7 @@ describe('Product Model', () => {
       isActive: false
     });
     const result = await store.delete(created.id as number);
-    expect(result.id).toBe(created.id);
+    expect(result?.id).toBe(created.id);
     const remaining = await store.index();
     const found = remaining.find((p) => p.id === created.id);
     expect(found).toBeUndefined();

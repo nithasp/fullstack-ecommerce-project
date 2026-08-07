@@ -1,4 +1,4 @@
-import { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import { UserStore } from '../models/user';
 import { OrderStore } from '../models/order';
 import { verifyAuthToken } from '../middleware/auth';
@@ -55,12 +55,13 @@ const destroy = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, deleted, 'User deleted.');
 });
 
-const userRoutes = (app: Application) => {
-  app.get('/users',      verifyAuthToken, index);
-  app.get('/users/:id',  verifyAuthToken, show);
-  app.post('/users',     verifyAuthToken, create);
-  app.put('/users/:id',  verifyAuthToken, update);
-  app.delete('/users/:id', verifyAuthToken, destroy);
-};
+const usersRouter = Router();
+usersRouter.use(verifyAuthToken);
 
-export default userRoutes;
+usersRouter.get('/', index);
+usersRouter.get('/:id', show);
+usersRouter.post('/', create);
+usersRouter.put('/:id', update);
+usersRouter.delete('/:id', destroy);
+
+export default usersRouter;

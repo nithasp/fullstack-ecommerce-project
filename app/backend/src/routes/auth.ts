@@ -1,17 +1,17 @@
-import { Application, Request, RequestHandler, Response } from 'express';
+import { Request, RequestHandler, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserStore } from '../models/user';
 import { RefreshTokenStore } from '../models/refreshToken';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
-import { AppError } from '../utils/response';
+import { AppError, sendSuccess } from '../utils/response';
 import { config } from '../config';
 
 const userStore = new UserStore();
 const refreshTokenStore = new RefreshTokenStore();
 
 const generateAccessToken = (userId: number): string =>
-  jwt.sign({ userId }, config.tokenSecret, { expiresIn: config.accessTokenExpiry as jwt.SignOptions['expiresIn'] });
+  jwt.sign({ userId }, config.jwt.secret, { expiresIn: config.jwt.accessTokenExpiry as jwt.SignOptions['expiresIn'] });
 
 const register = asyncHandler(async (req: Request, res: Response) => {
   const { username, password, firstName, lastName } = req.body;
@@ -32,9 +32,9 @@ const register = asyncHandler(async (req: Request, res: Response) => {
   });
 
   const accessToken = generateAccessToken(user.id!);
-  const refreshToken = await refreshTokenStore.create(user.id!, config.refreshTokenExpiryMs);
+  const refreshToken = await refreshTokenStore.create(user.id!, config.jwt.refreshTokenExpiryMs);
 
-  res.status(201).json({ status: 201, message: 'Account created successfully.', data: { user, accessToken, refreshToken } });
+  sendSuccess(res, { user, accessToken, refreshToken }, 'Account created successfully.', 201);
 });
 
 const login = asyncHandler(async (req: Request, res: Response) => {
@@ -49,12 +49,12 @@ const login = asyncHandler(async (req: Request, res: Response) => {
   if (!user) throw new AppError('Invalid username or password', 401);
 
   const accessToken = generateAccessToken(user.id!);
-  const refreshToken = await refreshTokenStore.create(user.id!, config.refreshTokenExpiryMs);
+  const refreshToken = await refreshTokenStore.create(user.id!, config.jwt.refreshTokenExpiryMs);
 
   // Fire-and-forget: clean up expired tokens without blocking the response
   refreshTokenStore.deleteExpired().catch(() => {});
 
-  res.json({ status: 200, message: 'Login successful! Welcome back.', data: { user, accessToken, refreshToken } });
+  sendSuccess(res, { user, accessToken, refreshToken }, 'Login successful! Welcome back.');
 });
 
 const refresh = asyncHandler(async (req: Request, res: Response) => {
@@ -68,9 +68,9 @@ const refresh = asyncHandler(async (req: Request, res: Response) => {
   await refreshTokenStore.deleteByToken(refreshToken);
 
   const accessToken = generateAccessToken(stored.user_id);
-  const newRefreshToken = await refreshTokenStore.create(stored.user_id, config.refreshTokenExpiryMs);
+  const newRefreshToken = await refreshTokenStore.create(stored.user_id, config.jwt.refreshTokenExpiryMs);
 
-  res.json({ status: 200, message: 'Token refreshed successfully.', data: { accessToken, refreshToken: newRefreshToken } });
+  sendSuccess(res, { accessToken, refreshToken: newRefreshToken }, 'Token refreshed successfully.');
 });
 
 const logout = asyncHandler(async (req: Request, res: Response) => {
@@ -78,28 +78,33 @@ const logout = asyncHandler(async (req: Request, res: Response) => {
   if (refreshToken && typeof refreshToken === 'string') {
     await refreshTokenStore.deleteByToken(refreshToken);
   }
-  res.json({ status: 200, message: 'Logged out successfully.', data: null });
+  sendSuccess(res, null, 'Logged out successfully.');
 });
 
 const logoutAll = asyncHandler(async (req: Request, res: Response) => {
   await refreshTokenStore.deleteAllForUser(req.user!.userId);
-  res.json({ status: 200, message: 'All sessions revoked.', data: null });
+  sendSuccess(res, null, 'All sessions revoked.');
 });
 
 const me = asyncHandler(async (req: Request, res: Response) => {
   const user = await userStore.show(req.user!.userId);
   if (!user) throw new AppError('User not found', 404);
-  res.json({ status: 200, message: 'User fetched successfully.', data: user });
+  sendSuccess(res, user, 'User fetched successfully.');
 });
 
-const authRoutes = (app: Application, limiter?: RequestHandler) => {
+/** Credential endpoints take an optional rate limiter (disabled in tests). */
+const createAuthRouter = (limiter?: RequestHandler): Router => {
+  const router = Router();
   const guard = limiter ? [limiter] : [];
-  app.post('/auth/register',  ...guard, register);
-  app.post('/auth/login',     ...guard, login);
-  app.post('/auth/refresh',   ...guard, refresh);
-  app.post('/auth/logout',    logout);
-  app.post('/auth/logout-all', verifyAuthToken, logoutAll);
-  app.get('/auth/me',          verifyAuthToken, me);
+
+  router.post('/register', ...guard, register);
+  router.post('/login', ...guard, login);
+  router.post('/refresh', ...guard, refresh);
+  router.post('/logout', logout);
+  router.post('/logout-all', verifyAuthToken, logoutAll);
+  router.get('/me', verifyAuthToken, me);
+
+  return router;
 };
 
-export default authRoutes;
+export default createAuthRouter;

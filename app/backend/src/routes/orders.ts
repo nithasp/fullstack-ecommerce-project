@@ -1,5 +1,6 @@
-import { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import { OrderStore } from '../models/order';
+import { ORDER_STATUSES, OrderStatus, isOrderStatus } from '../types/order.types';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendSuccess } from '../utils/response';
@@ -7,10 +8,17 @@ import { parseId, requirePositiveInt } from '../utils/validate';
 
 const store = new OrderStore();
 
+const STATUS_LIST = ORDER_STATUSES.map((status) => `'${status}'`).join(' or ');
+
+/** Validate an optional status value, e.g. from a query string or request body. */
+function parseOrderStatus(val: unknown, label: string): OrderStatus | undefined {
+  if (val === undefined) return undefined;
+  if (!isOrderStatus(val)) throw new AppError(`${label} must be either ${STATUS_LIST}`, 400);
+  return val;
+}
+
 const index = asyncHandler(async (req: Request, res: Response) => {
-  const status = req.query.status as string | undefined;
-  if (status && !['active', 'complete'].includes(status))
-    throw new AppError("status filter must be either 'active' or 'complete'", 400);
+  const status = parseOrderStatus(req.query.status, 'status filter');
 
   const userIdParam = req.query.userId as string | undefined;
   const userId = userIdParam ? parseId(userIdParam, 'userId filter') : undefined;
@@ -27,20 +35,17 @@ const show = asyncHandler(async (req: Request, res: Response) => {
 
 const create = asyncHandler(async (req: Request, res: Response) => {
   const userId = requirePositiveInt(req.body.userId, 'userId');
+  const status = parseOrderStatus(req.body.status || undefined, 'status') ?? 'active';
 
-  if (req.body.status && !['active', 'complete'].includes(req.body.status))
-    throw new AppError("status must be either 'active' or 'complete'", 400);
-
-  sendSuccess(res, await store.create({ userId, status: req.body.status || 'active' }), 'Order created.', 201);
+  sendSuccess(res, await store.create({ userId, status }), 'Order created.', 201);
 });
 
 const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'order id');
   if (!req.body.status) throw new AppError('status is required', 400);
-  if (!['active', 'complete'].includes(req.body.status))
-    throw new AppError("status must be either 'active' or 'complete'", 400);
+  const status = parseOrderStatus(req.body.status, 'status') as OrderStatus;
 
-  const updatedOrder = await store.update(id, req.body.status);
+  const updatedOrder = await store.update(id, status);
   if (!updatedOrder) throw new AppError(`order with id ${req.params.id} not found`, 404);
   sendSuccess(res, updatedOrder, 'Order updated.');
 });
@@ -75,16 +80,17 @@ const addProduct = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await store.addProduct({ orderId, productId, quantity }), 'Product added to order.');
 });
 
-const orderRoutes = (app: Application) => {
-  app.get('/orders', verifyAuthToken, index);
-  app.get('/orders/user/:userId/current',   verifyAuthToken, currentOrderByUser);
-  app.get('/orders/user/:userId/completed', verifyAuthToken, completedOrdersByUser);
-  app.get('/orders/:id/products',           verifyAuthToken, getOrderProducts);
-  app.post('/orders/:id/products',          verifyAuthToken, addProduct);
-  app.get('/orders/:id',                    verifyAuthToken, show);
-  app.post('/orders',                       verifyAuthToken, create);
-  app.put('/orders/:id',                    verifyAuthToken, update);
-  app.delete('/orders/:id',                 verifyAuthToken, destroy);
-};
+const ordersRouter = Router();
+ordersRouter.use(verifyAuthToken);
 
-export default orderRoutes;
+ordersRouter.get('/', index);
+ordersRouter.get('/user/:userId/current', currentOrderByUser);
+ordersRouter.get('/user/:userId/completed', completedOrdersByUser);
+ordersRouter.get('/:id/products', getOrderProducts);
+ordersRouter.post('/:id/products', addProduct);
+ordersRouter.get('/:id', show);
+ordersRouter.post('/', create);
+ordersRouter.put('/:id', update);
+ordersRouter.delete('/:id', destroy);
+
+export default ordersRouter;

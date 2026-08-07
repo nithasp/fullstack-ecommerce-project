@@ -1,5 +1,5 @@
 import supertest from 'supertest';
-import app from '../../server';
+import app from '../../app';
 import { Product } from '../../types/product.types';
 
 const request = supertest(app);

@@ -1,24 +1,36 @@
-import dotenv from 'dotenv';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
+import { config } from './config';
 
-dotenv.config();
-
-const { DATABASE_URL, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_TEST_DB, POSTGRES_USER, POSTGRES_PASSWORD, ENV } = process.env;
-
-const isProduction = ENV === 'production';
-
-export default new Pool(
-  DATABASE_URL
+const pool = new Pool(
+  config.db.url
     ? {
-        connectionString: DATABASE_URL,
+        connectionString: config.db.url,
         ssl: { rejectUnauthorized: false },
       }
     : {
-        host: POSTGRES_HOST,
-        port: parseInt(POSTGRES_PORT as string),
-        database: ENV === 'test' ? POSTGRES_TEST_DB : POSTGRES_DB,
-        user: POSTGRES_USER,
-        password: POSTGRES_PASSWORD,
-        ssl: isProduction ? { rejectUnauthorized: false } : false,
+        host: config.db.host,
+        port: config.db.port,
+        database: config.db.database,
+        user: config.db.user,
+        password: config.db.password,
+        ssl: config.isProduction ? { rejectUnauthorized: false } : false,
       }
 );
+
+export default pool;
+
+/** Run `fn` inside a BEGIN/COMMIT transaction, rolling back and rethrowing on error. */
+export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Promise<T> {
+  const tx = await pool.connect();
+  try {
+    await tx.query('BEGIN');
+    const result = await fn(tx);
+    await tx.query('COMMIT');
+    return result;
+  } catch (err) {
+    await tx.query('ROLLBACK');
+    throw err;
+  } finally {
+    tx.release();
+  }
+}

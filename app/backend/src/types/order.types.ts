@@ -1,8 +1,16 @@
+export const ORDER_STATUSES = ['active', 'complete'] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const isOrderStatus = (val: unknown): val is OrderStatus =>
+  typeof val === 'string' && (ORDER_STATUSES as readonly string[]).includes(val);
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed';
+
 export interface Order {
   id?: number;
   userId: number;
-  status: string;
-  paymentStatus?: string;
+  status: OrderStatus;
+  paymentStatus?: PaymentStatus;
   totalCents?: number | null;
   currency?: string | null;
   /** 'stripe' | 'omise' for orders created through the payment flow. */

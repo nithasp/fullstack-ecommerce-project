@@ -42,7 +42,7 @@ describe('User Model', () => {
   it('show method should return the correct user', async () => {
     const users = await store.index();
     const result = await store.show(users[0].id as number);
-    expect(result.username).toBe(users[0].username);
+    expect(result?.username).toBe(users[0].username);
   });
 
   it('authenticate method should return the user when credentials are correct', async () => {
@@ -62,14 +62,14 @@ describe('User Model', () => {
     const users = await store.index();
     const userId = users[0].id as number;
     const result = await store.update(userId, { firstName: 'Jane' });
-    expect(result.firstName).toBe('Jane');
+    expect(result?.firstName).toBe('Jane');
   });
 
   it('delete method should remove the user', async () => {
     const users = await store.index();
     const lastUser = users[users.length - 1];
     const result = await store.delete(lastUser.id as number);
-    expect(result.id).toBe(lastUser.id);
+    expect(result?.id).toBe(lastUser.id);
     const remaining = await store.index();
     const found = remaining.find((u) => u.id === lastUser.id);
     expect(found).toBeUndefined();

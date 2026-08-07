@@ -27,3 +27,27 @@ export function requirePositiveInt(val: unknown, label: string): number {
     throw new AppError(`${label} must be a positive integer`, 400);
   return num;
 }
+
+export function requireNonNegativeNumber(val: unknown, label: string): number {
+  if (val === undefined || val === null || val === '' || typeof val === 'boolean' || isNaN(Number(val)))
+    throw new AppError(`${label} is required and must be a valid number`, 400);
+  const num = Number(val);
+  if (num < 0) throw new AppError(`${label} must be a non-negative number`, 400);
+  return num;
+}
+
+export function optionalNonNegativeNumber(val: unknown, label: string): number | undefined {
+  if (val === undefined) return undefined;
+  if (val === null || val === '' || typeof val === 'boolean' || isNaN(Number(val)))
+    throw new AppError(`${label} must be a valid number`, 400);
+  const num = Number(val);
+  if (num < 0) throw new AppError(`${label} must be a non-negative number`, 400);
+  return num;
+}
+
+export function optionalNonNegativeInt(val: unknown, label: string): number | undefined {
+  const num = optionalNonNegativeNumber(val, label);
+  if (num === undefined) return undefined;
+  if (!Number.isInteger(num)) throw new AppError(`${label} must be a non-negative integer`, 400);
+  return num;
+}

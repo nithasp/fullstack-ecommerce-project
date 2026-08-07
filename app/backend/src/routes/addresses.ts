@@ -1,4 +1,4 @@
-import { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import { AddressStore } from '../models/address';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -62,12 +62,13 @@ const deleteAddress = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, deleted, 'Address deleted.');
 });
 
-const addressRoutes = (app: Application) => {
-  app.get('/addresses',        verifyAuthToken, getAddresses);
-  app.get('/addresses/:id',    verifyAuthToken, getAddress);
-  app.post('/addresses',       verifyAuthToken, createAddress);
-  app.put('/addresses/:id',    verifyAuthToken, updateAddress);
-  app.delete('/addresses/:id', verifyAuthToken, deleteAddress);
-};
+const addressesRouter = Router();
+addressesRouter.use(verifyAuthToken);
 
-export default addressRoutes;
+addressesRouter.get('/', getAddresses);
+addressesRouter.get('/:id', getAddress);
+addressesRouter.post('/', createAddress);
+addressesRouter.put('/:id', updateAddress);
+addressesRouter.delete('/:id', deleteAddress);
+
+export default addressesRouter;

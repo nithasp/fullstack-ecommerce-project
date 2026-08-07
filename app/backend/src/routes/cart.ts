@@ -1,11 +1,10 @@
-import { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import { CartStore } from '../models/cart';
-import { OrderStore } from '../models/order';
+import { OrderStore, OrderItemInput } from '../models/order';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendSuccess } from '../utils/response';
 import { parseId, requirePositiveInt } from '../utils/validate';
-import client from '../database';
 
 const cartStore = new CartStore();
 const orderStore = new OrderStore();
@@ -59,7 +58,7 @@ const clearCart = asyncHandler(async (req: Request, res: Response) => {
 
 const checkout = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const items: { productId: number; quantity: number }[] = req.body.items;
+  const items: OrderItemInput[] = req.body.items;
 
   if (!Array.isArray(items) || items.length === 0)
     throw new AppError('items must be a non-empty array', 400);
@@ -69,48 +68,18 @@ const checkout = asyncHandler(async (req: Request, res: Response) => {
     requirePositiveInt(item.quantity, 'quantity');
   }
 
-  const poolClient = await client.connect();
-  try {
-    await poolClient.query('BEGIN');
-
-    const { rows: orderRows } = await poolClient.query(
-      `INSERT INTO orders (user_id, status) VALUES ($1, 'active') RETURNING *`,
-      [userId]
-    );
-    const order = orderRows[0];
-
-    for (const item of items) {
-      await poolClient.query(
-        `INSERT INTO order_products (order_id, product_id, quantity) VALUES ($1, $2, $3)`,
-        [order.id, item.productId, item.quantity]
-      );
-    }
-
-    const { rows: completedRows } = await poolClient.query(
-      `UPDATE orders SET status = 'complete' WHERE id = $1 RETURNING *`,
-      [order.id]
-    );
-
-    await poolClient.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
-    await poolClient.query('COMMIT');
-
-    const o = completedRows[0];
-    sendSuccess(res, { order: { id: o.id, userId: o.user_id, status: o.status } }, 'Checkout successful.', 201);
-  } catch (err) {
-    await poolClient.query('ROLLBACK');
-    throw err;
-  } finally {
-    poolClient.release();
-  }
+  const order = await orderStore.checkoutCart(userId, items);
+  sendSuccess(res, { order: { id: order.id, userId: order.userId, status: order.status } }, 'Checkout successful.', 201);
 });
 
-const cartRoutes = (app: Application) => {
-  app.get('/cart',           verifyAuthToken, getCart);
-  app.post('/cart',          verifyAuthToken, addItem);
-  app.post('/cart/checkout', verifyAuthToken, checkout);
-  app.put('/cart/:id',       verifyAuthToken, updateItem);
-  app.delete('/cart/:id',    verifyAuthToken, removeItem);
-  app.delete('/cart',        verifyAuthToken, clearCart);
-};
+const cartRouter = Router();
+cartRouter.use(verifyAuthToken);
 
-export default cartRoutes;
+cartRouter.get('/', getCart);
+cartRouter.post('/', addItem);
+cartRouter.post('/checkout', checkout);
+cartRouter.put('/:id', updateItem);
+cartRouter.delete('/:id', removeItem);
+cartRouter.delete('/', clearCart);
+
+export default cartRouter;

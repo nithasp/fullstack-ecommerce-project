@@ -10,6 +10,15 @@ export function sendSuccess<T>(res: Response, data: T, message: string, statusCo
   res.status(statusCode).json({ status: statusCode, message, data });
 }
 
+/** JSON 404 for unmatched routes, mounted after all routers. */
+export const notFoundMiddleware = (req: Request, res: Response): void => {
+  res.status(404).json({
+    status: 404,
+    message: `Route ${req.method} ${req.path} not found`,
+    data: null,
+  });
+};
+
 export const errorMiddleware = (
   err: Error, _req: Request, res: Response, _next: NextFunction
 ): void => {

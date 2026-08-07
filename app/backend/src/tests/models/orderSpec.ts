@@ -79,7 +79,7 @@ describe('Order Model', () => {
 
   it('show method should return the correct order', async () => {
     const result = await store.show(testOrderId);
-    expect(result.id).toBe(testOrderId);
+    expect(result?.id).toBe(testOrderId);
   });
 
   it('index method should return orders filtered by userId', async () => {
@@ -129,8 +129,8 @@ describe('Order Model', () => {
 
   it('update method should update order status', async () => {
     const result = await store.update(testOrderId, 'complete');
-    expect(result.status).toBe('complete');
-    expect(result.id).toBe(testOrderId);
+    expect(result?.status).toBe('complete');
+    expect(result?.id).toBe(testOrderId);
   });
 
   it('index method should return completed orders filtered by status and userId', async () => {
@@ -169,7 +169,7 @@ describe('Order Model', () => {
   it('delete method should remove the order', async () => {
     const newOrder = await store.create({ userId: testUserId, status: 'active' });
     const result = await store.delete(newOrder.id as number);
-    expect(result.id).toBe(newOrder.id);
+    expect(result?.id).toBe(newOrder.id);
     const remaining = await store.index();
     const found = remaining.find((o) => o.id === newOrder.id);
     expect(found).toBeUndefined();

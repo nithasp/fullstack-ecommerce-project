@@ -4,19 +4,23 @@ import { config } from '../config';
 
 // Returns distinct error codes (no_token / token_expired / token_invalid) for frontend token-refresh logic
 export const verifyAuthToken = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.status(401).json({ error: 'Access denied. No token provided.', code: 'no_token' });
+    return;
+  }
+
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) {
+    res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });
+    return;
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      res.status(401).json({ error: 'Access denied. No token provided.', code: 'no_token' });
-      return;
-    }
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, config.tokenSecret) as { userId: number };
-    req.user = decoded;
+    req.user = jwt.verify(token, config.jwt.secret) as { userId: number };
     next();
   } catch (err) {
-    const jwtErr = err as { name?: string };
-    if (jwtErr.name === 'TokenExpiredError') {
+    if ((err as { name?: string }).name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Access token has expired.', code: 'token_expired' });
     } else {
       res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });

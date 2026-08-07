@@ -1,6 +1,6 @@
 import supertest from 'supertest';
 import jwt from 'jsonwebtoken';
-import app from '../../server';
+import app from '../../app';
 
 const request = supertest(app);
 const TOKEN_SECRET = process.env.TOKEN_SECRET || 'default-secret-for-dev';
