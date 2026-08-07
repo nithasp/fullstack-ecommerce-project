@@ -54,6 +54,106 @@ export class OrderStore {
     return this.mapOrderProductRow(rows[0]);
   }
 
+  /** Create an 'active' order awaiting payment, together with its order_products, in one transaction. */
+  async createPendingPaymentOrder(
+    userId: number,
+    items: { productId: number; quantity: number }[],
+    totalCents: number,
+    currency: string
+  ): Promise<Order> {
+    const poolClient = await client.connect();
+    try {
+      await poolClient.query('BEGIN');
+
+      const { rows } = await poolClient.query(
+        `INSERT INTO orders (user_id, status, payment_status, total_cents, currency)
+         VALUES ($1, 'active', 'pending', $2, $3) RETURNING *`,
+        [userId, totalCents, currency]
+      );
+      const order = rows[0];
+
+      for (const item of items) {
+        await poolClient.query(
+          `INSERT INTO order_products (order_id, product_id, quantity) VALUES ($1, $2, $3)`,
+          [order.id, item.productId, item.quantity]
+        );
+      }
+
+      await poolClient.query('COMMIT');
+      return this.mapOrderRow(order);
+    } catch (err) {
+      await poolClient.query('ROLLBACK');
+      throw err;
+    } finally {
+      poolClient.release();
+    }
+  }
+
+  async setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void> {
+    await client.query('UPDATE orders SET payment_intent_id=$1 WHERE id=$2', [paymentIntentId, orderId]);
+  }
+
+  async findByPaymentIntentId(paymentIntentId: string): Promise<Order | undefined> {
+    const { rows } = await client.query('SELECT * FROM orders WHERE payment_intent_id=$1', [paymentIntentId]);
+    return rows[0] ? this.mapOrderRow(rows[0]) : undefined;
+  }
+
+  /**
+   * Mark the order tied to a PaymentIntent as paid/complete and remove the purchased
+   * products from the user's cart. Idempotent — safe to call from both the client
+   * confirmation endpoint and the Stripe webhook.
+   */
+  async markPaidByPaymentIntent(paymentIntentId: string): Promise<Order | undefined> {
+    const poolClient = await client.connect();
+    try {
+      await poolClient.query('BEGIN');
+
+      const { rows } = await poolClient.query(
+        `UPDATE orders SET status='complete', payment_status='paid'
+         WHERE payment_intent_id=$1 RETURNING *`,
+        [paymentIntentId]
+      );
+      if (!rows[0]) {
+        await poolClient.query('ROLLBACK');
+        return undefined;
+      }
+
+      await poolClient.query(
+        `DELETE FROM cart_items
+         WHERE user_id = $1
+           AND product_id IN (SELECT product_id FROM order_products WHERE order_id = $2)`,
+        [rows[0].user_id, rows[0].id]
+      );
+
+      await poolClient.query('COMMIT');
+      return this.mapOrderRow(rows[0]);
+    } catch (err) {
+      await poolClient.query('ROLLBACK');
+      throw err;
+    } finally {
+      poolClient.release();
+    }
+  }
+
+  async markPaymentFailed(paymentIntentId: string): Promise<void> {
+    await client.query(
+      `UPDATE orders SET payment_status='failed'
+       WHERE payment_intent_id=$1 AND payment_status <> 'paid'`,
+      [paymentIntentId]
+    );
+  }
+
+  /** Remove a user's abandoned checkout orders (never paid) and return their PaymentIntent ids. */
+  async deleteAbandonedPaymentOrders(userId: number): Promise<string[]> {
+    const { rows } = await client.query(
+      `DELETE FROM orders
+       WHERE user_id=$1 AND status='active' AND payment_status IN ('pending', 'failed')
+       RETURNING payment_intent_id`,
+      [userId]
+    );
+    return rows.map((r) => r.payment_intent_id as string | null).filter((id): id is string => Boolean(id));
+  }
+
   async recentPurchases(userId: number, limit: number = 5): Promise<RecentPurchase[]> {
     const { rows } = await client.query(
       `SELECT p.id AS product_id, p.name, p.price, p.category, p.image, p.description, op.quantity, o.id AS order_id
@@ -69,7 +169,11 @@ export class OrderStore {
   }
 
   private mapOrderRow(row: Record<string, unknown>): Order {
-    return { id: row.id as number, userId: row.user_id as number, status: row.status as string };
+    const order: Order = { id: row.id as number, userId: row.user_id as number, status: row.status as string };
+    if (row.payment_status !== undefined) order.paymentStatus = row.payment_status as string;
+    if (row.total_cents !== undefined && row.total_cents !== null) order.totalCents = Number(row.total_cents);
+    if (row.currency !== undefined && row.currency !== null) order.currency = row.currency as string;
+    return order;
   }
 
   private mapOrderProductRow(row: Record<string, unknown>): OrderProduct {

@@ -7,7 +7,13 @@ import { Router } from '@angular/router';
   styleUrl: './order-confirmation.component.scss'
 })
 export class OrderConfirmationComponent {
-  constructor(private router: Router) {}
+  /** Set when arriving from the Stripe payment flow (passed via router state). */
+  orderId: number | null = null;
+
+  constructor(private router: Router) {
+    const state = this.router.getCurrentNavigation()?.extras?.state ?? history.state;
+    this.orderId = typeof state?.['orderId'] === 'number' ? state['orderId'] : null;
+  }
 
   continueShopping(): void {
     this.router.navigate(['/products']);

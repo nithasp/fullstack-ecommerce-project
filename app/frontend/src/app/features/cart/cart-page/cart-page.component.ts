@@ -4,10 +4,12 @@ import { combineLatest, Subscription } from 'rxjs';
 import { CartItem } from '../../products/models/product.model';
 import { CartService } from '../../../core/services/cart/cart.service';
 import { CartApiService } from '../../../core/services/cart/cart-api.service';
+import { PaymentApiService } from '../../../core/services/payment/payment-api.service';
 import { NotificationService } from '../../../core/services/ui/notification.service';
 import { AddressApiService } from '../services/address-api.service';
 import { AddressEntry } from '../models/address.model';
 import { PaymentMethod, ShopGroup } from '../models/cart.model';
+import { PaymentIntentSession } from '../../../core/models/payment-api.model';
 
 @Component({
   selector: 'app-cart-page',
@@ -35,6 +37,12 @@ export class CartPageComponent implements OnInit, OnDestroy {
     { id: 'bank',       name: 'Bank Transfer',  description: 'Direct Bank Transfer', badge: 'BANK', color: '#059669' },
   ];
 
+  /** Payment methods that go through the Stripe card flow. */
+  private readonly CARD_METHODS = new Set(['visa', 'mastercard']);
+
+  isPaymentDialogOpen = false;
+  paymentSession: PaymentIntentSession | null = null;
+
   discountCode = '';
   appliedDiscount = 0;
   discountLabel = '';
@@ -52,6 +60,7 @@ export class CartPageComponent implements OnInit, OnDestroy {
   constructor(
     public cartService: CartService,
     private cartApi: CartApiService,
+    private paymentApi: PaymentApiService,
     private addressApi: AddressApiService,
     private notificationService: NotificationService,
     private router: Router
@@ -264,6 +273,11 @@ export class CartPageComponent implements OnInit, OnDestroy {
     }
     if (this.isCheckingOut) return;
 
+    if (this.CARD_METHODS.has(this.selectedPayment)) {
+      this.startCardCheckout();
+      return;
+    }
+
     const checkoutItems = this.selectedItems
       .filter(item => item.cartItemId !== undefined)
       .map(item => ({
@@ -290,5 +304,47 @@ export class CartPageComponent implements OnInit, OnDestroy {
         this.notificationService.error(message);
       },
     });
+  }
+
+  /** Card checkout via Stripe: the backend prices the items and returns a PaymentIntent. */
+  private startCardCheckout(): void {
+    const cartItemIds = this.selectedItems
+      .map(item => item.cartItemId)
+      .filter((id): id is number => id !== undefined);
+
+    if (cartItemIds.length === 0) {
+      this.notificationService.error('Unable to process order. Please refresh and try again.');
+      return;
+    }
+
+    this.isCheckingOut = true;
+    this.paymentApi.createPaymentIntent({
+      cartItemIds,
+      discountCode: this.appliedDiscount > 0 ? this.discountLabel : undefined,
+    }).subscribe({
+      next: (session) => {
+        this.isCheckingOut = false;
+        this.paymentSession = session;
+        this.isPaymentDialogOpen = true;
+      },
+      error: (err) => {
+        this.isCheckingOut = false;
+        this.notificationService.error(err?.message || 'Unable to start the payment. Please try again.');
+      },
+    });
+  }
+
+  onPaymentPaid(orderId: number): void {
+    this.isPaymentDialogOpen = false;
+    this.paymentSession = null;
+    // The backend removed the purchased items from the cart — re-sync it.
+    this.cartService.fetchCart();
+    this.notificationService.success('Payment successful! Your order has been placed.', 'Thank You');
+    this.router.navigate(['/cart/confirmation'], { state: { orderId } });
+  }
+
+  onPaymentDialogClosed(): void {
+    this.isPaymentDialogOpen = false;
+    this.paymentSession = null;
   }
 }

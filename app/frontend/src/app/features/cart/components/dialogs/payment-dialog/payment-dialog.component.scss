@@ -1,0 +1,227 @@
+@import 'variables';
+@import 'mixins';
+
+// ─── Overlay — fixed, covers entire app ──────────────────────────────────────
+
+.payment-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md;
+  animation: payOverlayFadeIn $transition-base forwards;
+
+  &--closing {
+    animation: payOverlayFadeOut $transition-base forwards;
+  }
+}
+
+// ─── Dialog Panel ─────────────────────────────────────────────────────────────
+
+.payment-dialog {
+  background: $color-bg-white;
+  border-radius: $border-radius-xl;
+  box-shadow: $shadow-xl;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: payDialogSlideUp $transition-slow forwards;
+
+  &--closing {
+    animation: payDialogSlideDown $transition-base forwards;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    padding: $spacing-lg;
+    border-bottom: 1px solid $color-border;
+    flex-shrink: 0;
+  }
+
+  &__title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    font-size: $font-size-xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+    margin: 0;
+
+    svg { color: $color-primary; flex-shrink: 0; }
+  }
+
+  &__close {
+    @include button-base;
+    background: $color-bg;
+    color: $color-text-light;
+    font-size: $font-size-xl;
+    width: 34px;
+    height: 34px;
+    border-radius: $border-radius-full;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: all $transition-fast;
+
+    &:hover:not(:disabled) {
+      background: $color-error-bg;
+      color: $color-error;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: $spacing-lg;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+  }
+
+  &__summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: $color-primary-bg;
+    border: 1px solid $color-primary-light;
+    border-radius: $border-radius-md;
+    padding: $spacing-sm-md $spacing-md;
+  }
+
+  &__summary-label {
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    color: $color-text-light;
+  }
+
+  &__summary-amount {
+    font-size: $font-size-lg;
+    font-weight: $font-weight-bold;
+    color: $color-primary;
+  }
+
+  &__loading {
+    padding: $spacing-xl 0;
+  }
+
+  // Stripe iframe host — keep in the DOM while loading so mount() succeeds.
+  &__element {
+    min-height: 90px;
+
+    &--hidden {
+      visibility: hidden;
+      height: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+  }
+
+  &__load-error,
+  &__error {
+    background: $color-error-bg;
+    color: $color-error;
+    border: 1px solid rgba($color-error, 0.25);
+    border-radius: $border-radius-md;
+    padding: $spacing-sm $spacing-md;
+    font-size: $font-size-sm;
+    margin: 0;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: $spacing-md;
+    padding: $spacing-md $spacing-lg;
+    border-top: 1px solid $color-border;
+    flex-shrink: 0;
+  }
+
+  &__cancel {
+    @include button-base;
+    padding: $spacing-sm $spacing-xl;
+    background: $color-bg;
+    color: $color-text;
+    border-radius: $border-radius-md;
+    font-size: $font-size-base;
+    font-weight: $font-weight-medium;
+    transition: background $transition-fast;
+
+    &:hover:not(:disabled) { background: $color-border; }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
+  }
+
+  &__pay {
+    @include button-primary;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-sm;
+    padding: $spacing-sm $spacing-xl;
+    font-size: $font-size-base;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__pay-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: paySpin 700ms linear infinite;
+  }
+
+  &__secure-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-xs;
+    margin: 0;
+    padding: 0 $spacing-lg $spacing-md;
+    font-size: $font-size-xs;
+    color: $color-text-muted;
+
+    svg { color: $color-success; flex-shrink: 0; }
+  }
+}
+
+// ─── Animations ───────────────────────────────────────────────────────────────
+
+@keyframes payOverlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes payOverlayFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes payDialogSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes payDialogSlideDown {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(24px); opacity: 0; }
+}
+
+@keyframes paySpin {
+  to { transform: rotate(360deg); }
+}

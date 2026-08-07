@@ -9,6 +9,10 @@ export interface CartItem {
   shopName?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
+  // Joined product fields — present when fetched with a products JOIN
+  productName?: string;
+  productPrice?: number | string;
+  productIsActive?: boolean;
 }
 
 export interface UpsertCartItemPayload {

@@ -19,4 +19,8 @@ export const config = {
     .map((o) => o.trim())
     .filter(Boolean),
   port: parseInt(process.env.PORT || '3000', 10),
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  stripeCurrency: (process.env.STRIPE_CURRENCY || 'usd').toLowerCase(),
 };

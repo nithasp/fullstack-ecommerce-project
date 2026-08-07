@@ -32,6 +32,17 @@
     margin-bottom: $spacing-md;
   }
 
+  &__order-number {
+    display: inline-block;
+    background: $color-success-bg;
+    color: $color-success;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    padding: $spacing-xs $spacing-md;
+    border-radius: $border-radius-full;
+    margin-bottom: $spacing-md;
+  }
+
   &__message {
     font-size: $font-size-base;
     color: $color-text;

@@ -8,6 +8,7 @@ import productRoutes from './handlers/products';
 import orderRoutes from './handlers/orders';
 import cartRoutes from './handlers/cart';
 import addressRoutes from './handlers/addresses';
+import paymentRoutes, { stripeWebhookRoute } from './handlers/payments';
 import { errorMiddleware } from './utils/response';
 import { config } from './config';
 
@@ -16,6 +17,9 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ origin: config.allowedOrigins, credentials: true }));
+// Stripe webhook needs the raw request body for signature verification,
+// so its route is registered before the global JSON parser.
+stripeWebhookRoute(app);
 app.use(express.json());
 app.set('etag', false);
 
@@ -39,6 +43,7 @@ productRoutes(app);
 orderRoutes(app);
 cartRoutes(app);
 addressRoutes(app);
+paymentRoutes(app);
 
 app.use(errorMiddleware);
 

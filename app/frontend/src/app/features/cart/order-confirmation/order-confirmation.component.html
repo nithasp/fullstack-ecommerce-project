@@ -16,6 +16,7 @@
     </div>
 
     <h1 class="confirmation__title">Order Confirmed!</h1>
+    <p *ngIf="orderId" class="confirmation__order-number">Order #{{ orderId }}</p>
     <p class="confirmation__message">
       Thank you for your purchase. Your order has been placed successfully
       and is being processed.

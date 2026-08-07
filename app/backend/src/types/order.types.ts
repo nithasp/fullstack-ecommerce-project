@@ -2,6 +2,9 @@ export interface Order {
   id?: number;
   userId: number;
   status: string;
+  paymentStatus?: string;
+  totalCents?: number | null;
+  currency?: string | null;
 }
 
 export interface OrderProduct {

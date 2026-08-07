@@ -28,6 +28,22 @@ export class CartStore {
     return rows.map((row) => this.mapRow(row));
   }
 
+  /** Fetch specific cart items (scoped to the user) with product data joined, for server-side pricing. */
+  async getByIds(cartItemIds: number[], userId: number): Promise<CartItem[]> {
+    const { rows } = await client.query(
+      `SELECT
+         ci.*,
+         p.name      AS product_name,
+         p.price     AS product_price,
+         p.is_active AS product_is_active
+       FROM cart_items ci
+       JOIN products p ON ci.product_id = p.id
+       WHERE ci.user_id = $1 AND ci.id = ANY($2::int[])`,
+      [userId, cartItemIds]
+    );
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async upsert(userId: number, payload: UpsertCartItemPayload): Promise<CartItem> {
     const { rows } = await client.query(
       `INSERT INTO cart_items (user_id, product_id, quantity, type_id, selected_type, shop_id, shop_name)

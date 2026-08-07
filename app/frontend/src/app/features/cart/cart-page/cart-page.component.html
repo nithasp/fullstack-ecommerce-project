@@ -235,4 +235,11 @@
     [(selectedAddressId)]="selectedAddressId"
     (addressesChange)="onAddressesChange($event)"
     (closed)="isAddressDialogOpen = false"></app-address-dialog>
+
+  <app-payment-dialog *ngIf="isPaymentDialogOpen && paymentSession"
+    [clientSecret]="paymentSession.clientSecret"
+    [amount]="paymentSession.amount"
+    [orderId]="paymentSession.orderId"
+    (paid)="onPaymentPaid($event)"
+    (closed)="onPaymentDialogClosed()"></app-payment-dialog>
 </div>
