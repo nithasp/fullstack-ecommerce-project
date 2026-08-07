@@ -23,4 +23,8 @@ export const config = {
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripeCurrency: (process.env.STRIPE_CURRENCY || 'usd').toLowerCase(),
+  omiseSecretKey: process.env.OMISE_SECRET_KEY || '',
+  omisePublicKey: process.env.OMISE_PUBLIC_KEY || '',
+  // Omise accounts settle in their registration country's currency (THB for Thailand).
+  omiseCurrency: (process.env.OMISE_CURRENCY || 'thb').toLowerCase(),
 };

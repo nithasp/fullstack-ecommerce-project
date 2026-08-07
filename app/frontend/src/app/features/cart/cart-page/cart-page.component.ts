@@ -3,13 +3,12 @@ import { Router } from '@angular/router';
 import { combineLatest, Subscription } from 'rxjs';
 import { CartItem } from '../../products/models/product.model';
 import { CartService } from '../../../core/services/cart/cart.service';
-import { CartApiService } from '../../../core/services/cart/cart-api.service';
 import { PaymentApiService } from '../../../core/services/payment/payment-api.service';
 import { NotificationService } from '../../../core/services/ui/notification.service';
 import { AddressApiService } from '../services/address-api.service';
 import { AddressEntry } from '../models/address.model';
 import { PaymentMethod, ShopGroup } from '../models/cart.model';
-import { PaymentIntentSession } from '../../../core/models/payment-api.model';
+import { OmiseMethodId, PaymentIntentSession } from '../../../core/models/payment-api.model';
 
 @Component({
   selector: 'app-cart-page',
@@ -31,17 +30,25 @@ export class CartPageComponent implements OnInit, OnDestroy {
 
   selectedPayment = 'visa';
   paymentMethods: PaymentMethod[] = [
-    { id: 'visa',       name: 'Visa',          description: 'Credit / Debit Card',  badge: 'VISA', color: '#1a1f71' },
-    { id: 'mastercard', name: 'Mastercard',     description: 'Credit / Debit Card',  badge: 'MC',   color: '#eb001b' },
-    { id: 'qrcode',     name: 'QR Code',        description: 'Scan to Pay',          badge: 'QR',   color: '#6366f1' },
-    { id: 'bank',       name: 'Bank Transfer',  description: 'Direct Bank Transfer', badge: 'BANK', color: '#059669' },
+    { id: 'visa',           name: 'Visa',            description: 'Credit / Debit Card',       badge: 'VISA', color: '#1a1f71' },
+    { id: 'mastercard',     name: 'Mastercard',       description: 'Credit / Debit Card',       badge: 'MC',   color: '#eb001b' },
+    { id: 'truemoney',      name: 'TrueMoney',        description: 'TrueMoney Wallet',          badge: 'TM',   color: '#f57c00' },
+    { id: 'rabbit_linepay', name: 'Rabbit LINE Pay',  description: 'LINE Pay Wallet',           badge: 'LINE', color: '#06c755' },
+    { id: 'shopeepay',      name: 'ShopeePay',        description: 'ShopeePay Wallet',          badge: 'SPP',  color: '#ee4d2d' },
+    { id: 'banking',        name: 'Mobile Banking',   description: 'Mobile / Internet Banking', badge: 'BANK', color: '#059669' },
+    { id: 'installment',    name: 'Installments',     description: 'ผ่อนชำระรายเดือน',           badge: 'ผ่อน', color: '#7c3aed' },
   ];
 
   /** Payment methods that go through the Stripe card flow. */
   private readonly CARD_METHODS = new Set(['visa', 'mastercard']);
+  /** Thai local payment methods that go through the Omise redirect flow. */
+  private readonly OMISE_METHODS = new Set<string>(['truemoney', 'rabbit_linepay', 'shopeepay', 'banking', 'installment']);
 
   isPaymentDialogOpen = false;
   paymentSession: PaymentIntentSession | null = null;
+
+  isOmiseDialogOpen = false;
+  omiseCheckout: { method: OmiseMethodId; cartItemIds: number[]; discountCode?: string; amount: number } | null = null;
 
   discountCode = '';
   appliedDiscount = 0;
@@ -59,7 +66,6 @@ export class CartPageComponent implements OnInit, OnDestroy {
 
   constructor(
     public cartService: CartService,
-    private cartApi: CartApiService,
     private paymentApi: PaymentApiService,
     private addressApi: AddressApiService,
     private notificationService: NotificationService,
@@ -278,44 +284,52 @@ export class CartPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const checkoutItems = this.selectedItems
-      .filter(item => item.cartItemId !== undefined)
-      .map(item => ({
-        productId: item.product.id,
-        quantity: item.quantity,
-      }));
-
-    if (checkoutItems.length === 0) {
-      this.notificationService.error('Unable to process order. Please refresh and try again.');
+    if (this.OMISE_METHODS.has(this.selectedPayment)) {
+      this.startOmiseCheckout();
       return;
     }
 
-    this.isCheckingOut = true;
-    this.cartApi.checkout(checkoutItems).subscribe({
-      next: () => {
-        this.cartService.clearLocalCart();
-        this.isCheckingOut = false;
-        this.notificationService.success('Order placed successfully!', 'Thank You');
-        this.router.navigate(['/cart/confirmation']);
-      },
-      error: (err) => {
-        this.isCheckingOut = false;
-        const message = err?.error?.error || 'Checkout failed. Please try again.';
-        this.notificationService.error(message);
-      },
-    });
+    this.notificationService.error('Please select a payment method.');
   }
 
-  /** Card checkout via Stripe: the backend prices the items and returns a PaymentIntent. */
-  private startCardCheckout(): void {
+  /**
+   * Thai local payment methods via Omise: the dialog collects the
+   * method-specific details and redirects to the wallet/bank to authorize.
+   */
+  private startOmiseCheckout(): void {
+    const cartItemIds = this.checkoutCartItemIds();
+    if (!cartItemIds) return;
+
+    this.omiseCheckout = {
+      method: this.selectedPayment as OmiseMethodId,
+      cartItemIds,
+      discountCode: this.appliedDiscount > 0 ? this.discountLabel : undefined,
+      amount: Math.round(this.cartTotalAfterDiscount * 100),
+    };
+    this.isOmiseDialogOpen = true;
+  }
+
+  onOmiseDialogClosed(): void {
+    this.isOmiseDialogOpen = false;
+    this.omiseCheckout = null;
+  }
+
+  private checkoutCartItemIds(): number[] | null {
     const cartItemIds = this.selectedItems
       .map(item => item.cartItemId)
       .filter((id): id is number => id !== undefined);
 
     if (cartItemIds.length === 0) {
       this.notificationService.error('Unable to process order. Please refresh and try again.');
-      return;
+      return null;
     }
+    return cartItemIds;
+  }
+
+  /** Card checkout via Stripe: the backend prices the items and returns a PaymentIntent. */
+  private startCardCheckout(): void {
+    const cartItemIds = this.checkoutCartItemIds();
+    if (!cartItemIds) return;
 
     this.isCheckingOut = true;
     this.paymentApi.createPaymentIntent({

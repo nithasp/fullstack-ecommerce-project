@@ -8,7 +8,7 @@ import productRoutes from './handlers/products';
 import orderRoutes from './handlers/orders';
 import cartRoutes from './handlers/cart';
 import addressRoutes from './handlers/addresses';
-import paymentRoutes, { stripeWebhookRoute } from './handlers/payments';
+import paymentRoutes, { stripeWebhookRoute, omiseWebhookRoute } from './handlers/payments';
 import { errorMiddleware } from './utils/response';
 import { config } from './config';
 
@@ -21,6 +21,9 @@ app.use(cors({ origin: config.allowedOrigins, credentials: true }));
 // so its route is registered before the global JSON parser.
 stripeWebhookRoute(app);
 app.use(express.json());
+// Omise webhooks are unsigned JSON — the handler re-fetches the charge from
+// the Omise API instead of trusting the payload, so the parsed body is fine.
+omiseWebhookRoute(app);
 app.set('etag', false);
 
 const authLimiter = process.env.ENV === 'test'

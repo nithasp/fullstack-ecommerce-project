@@ -242,4 +242,11 @@
     [orderId]="paymentSession.orderId"
     (paid)="onPaymentPaid($event)"
     (closed)="onPaymentDialogClosed()"></app-payment-dialog>
+
+  <app-omise-payment-dialog *ngIf="isOmiseDialogOpen && omiseCheckout"
+    [method]="omiseCheckout.method"
+    [amount]="omiseCheckout.amount"
+    [cartItemIds]="omiseCheckout.cartItemIds"
+    [discountCode]="omiseCheckout.discountCode"
+    (closed)="onOmiseDialogClosed()"></app-omise-payment-dialog>
 </div>

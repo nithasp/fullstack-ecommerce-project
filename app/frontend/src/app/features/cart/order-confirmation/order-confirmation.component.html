@@ -1,5 +1,7 @@
 <div class="confirmation animate-scale-in">
-  <div class="confirmation__card">
+
+  <!-- Success -->
+  <div class="confirmation__card" *ngIf="state === 'success'">
     <div class="confirmation__icon">
       <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
         <circle cx="40" cy="40" r="38" stroke="#10b981" stroke-width="3" fill="#ecfdf5" />
@@ -29,4 +31,66 @@
       Continue Shopping
     </button>
   </div>
+
+  <!-- Verifying an Omise payment after the redirect back -->
+  <div class="confirmation__card" *ngIf="state === 'verifying'">
+    <div class="confirmation__spinner" aria-hidden="true"></div>
+    <h1 class="confirmation__title confirmation__title--neutral">Confirming your payment…</h1>
+    <p *ngIf="orderId" class="confirmation__order-number confirmation__order-number--neutral">Order #{{ orderId }}</p>
+    <p class="confirmation__message">
+      We're checking the payment result with the payment provider.
+      This usually takes just a few seconds.
+    </p>
+  </div>
+
+  <!-- Payment still pending after polling -->
+  <div class="confirmation__card" *ngIf="state === 'pending'">
+    <div class="confirmation__icon">
+      <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+        <circle cx="40" cy="40" r="38" stroke="#f59e0b" stroke-width="3" fill="#fffbeb" />
+        <path d="M40 22 V42 L52 50" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"
+          stroke-linejoin="round" fill="none" />
+      </svg>
+    </div>
+
+    <h1 class="confirmation__title confirmation__title--pending">Payment Pending</h1>
+    <p *ngIf="orderId" class="confirmation__order-number confirmation__order-number--pending">Order #{{ orderId }}</p>
+    <p class="confirmation__message">
+      Your payment hasn't been confirmed by the provider yet. If you already
+      approved it in your bank or wallet app, it may take a moment to arrive.
+    </p>
+    <p class="confirmation__sub-message">
+      You can check again below — your order will complete automatically once
+      the payment is confirmed.
+    </p>
+
+    <div class="confirmation__actions">
+      <button class="confirmation__btn confirmation__btn--secondary" (click)="backToCart()">Back to Cart</button>
+      <button class="confirmation__btn" (click)="checkAgain()">Check Again</button>
+    </div>
+  </div>
+
+  <!-- Failed / expired -->
+  <div class="confirmation__card" *ngIf="state === 'failed'">
+    <div class="confirmation__icon">
+      <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+        <circle cx="40" cy="40" r="38" stroke="#ef4444" stroke-width="3" fill="#fef2f2" />
+        <path d="M28 28 L52 52 M52 28 L28 52" stroke="#ef4444" stroke-width="4" stroke-linecap="round" fill="none" />
+      </svg>
+    </div>
+
+    <h1 class="confirmation__title confirmation__title--failed">Payment Not Completed</h1>
+    <p *ngIf="orderId" class="confirmation__order-number confirmation__order-number--failed">Order #{{ orderId }}</p>
+    <p class="confirmation__message">{{ failureReason }}</p>
+    <p class="confirmation__sub-message">
+      You haven't been charged for this order. Your items are still in the
+      cart, so you can try again with the same or a different payment method.
+    </p>
+
+    <div class="confirmation__actions">
+      <button class="confirmation__btn confirmation__btn--secondary" (click)="checkAgain()">Check Again</button>
+      <button class="confirmation__btn" (click)="backToCart()">Back to Cart</button>
+    </div>
+  </div>
+
 </div>

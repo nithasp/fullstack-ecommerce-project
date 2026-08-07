@@ -47,6 +47,9 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...   # optional, see Stripe Payments below
 STRIPE_CURRENCY=usd               # optional, defaults to usd
+OMISE_SECRET_KEY=skey_test_...    # see Omise Payments below
+OMISE_PUBLIC_KEY=pkey_test_...    # optional (not used by the current flows)
+OMISE_CURRENCY=thb                # optional, defaults to thb
 ```
 
 ### 4. Run migrations
@@ -78,7 +81,7 @@ npm test
 | Cart       | `/cart`       | JWT           |
 | Addresses  | `/addresses`  | JWT           |
 | Payments   | `/payments`   | Partial       |
-| Webhooks   | `/webhooks`   | Stripe signature |
+| Webhooks   | `/webhooks`   | Stripe: signature / Omise: charge re-fetch |
 
 See [API_TESTING.md](API_TESTING.md) for full cURL examples.
 
@@ -108,6 +111,33 @@ stripe listen --forward-to localhost:3000/webhooks/stripe
 Without the webhook secret, orders are still finalized through `POST /payments/confirm` after the client-side payment succeeds.
 
 **Testing** — use Stripe test cards, e.g. `4242 4242 4242 4242` (success) or `4000 0000 0000 0002` (declined), any future expiry / any CVC.
+
+---
+
+## Omise Payments (Thai local methods)
+
+TrueMoney Wallet, Rabbit LINE Pay, ShopeePay, mobile/internet banking, and installments (ผ่อนชำระ) are processed by [Omise (Opn Payments)](https://www.omise.co/). These are **redirect-based** payments: the customer approves the charge in their wallet/bank app and is then sent back to the store.
+
+**Flow**
+
+1. `GET /payments/omise/config` — which methods (and banks / installment terms) are enabled on the Omise account, driven by the Omise capability API. The cart dialog renders only what can actually charge.
+2. `POST /payments/omise/create-charge` — body `{ cartItemIds, discountCode?, method, phoneNumber?, bankSourceType?, installmentBank?, installmentTerm?, returnOrigin }`. The server prices the items from the database, creates an order (`payment_provider='omise'`), an Omise source + charge, and returns the `authorizeUri` to redirect the customer to.
+3. The customer approves (or cancels) the payment on the wallet/bank page and is redirected back to `/cart/confirmation?provider=omise&orderId=N`.
+4. `POST /payments/omise/confirm` — body `{ orderId }`. Re-fetches the charge from Omise, finalizes the order (`paid` / `failed`), and removes purchased items from the cart. The confirmation page polls this while the charge is pending. Idempotent.
+5. `POST /webhooks/omise` — same finalization driven by Omise `charge.*` events. Omise webhooks are unsigned, so the handler never trusts the payload — it re-fetches the charge from the API and only that verified object drives order state.
+
+**Setup**
+
+1. [Sign up for a free Omise account](https://dashboard.omise.co/signup) (test mode needs no business documents) and copy the **test secret key** from Keys → set `OMISE_SECRET_KEY` in `.env`.
+2. In the Omise dashboard (test mode), enable the payment methods you want to offer (TrueMoney, Rabbit LINE Pay, ShopeePay, mobile banking, installments). Methods not enabled on the account are hidden in the cart automatically.
+3. Run `npm run migrate:up` (adds `payment_provider` / `payment_method` columns to `orders`).
+4. Optional: point an Omise webhook at `https://<your-tunnel>/webhooks/omise` (dashboard → Webhooks). Without it, orders are still finalized by the confirmation page through `POST /payments/omise/confirm`.
+
+**Notes**
+
+- Omise Thailand accounts charge in THB (`OMISE_CURRENCY=thb`); amounts are sent in satang. Most methods require a minimum charge of ฿20, and installments have per-bank minimums — Omise's error message is surfaced to the customer if the total is too low.
+- In test mode the `authorizeUri` opens a simulator page where you can click **Mark as successful / failed / expired** to exercise every outcome.
+- Going live requires an approved Omise merchant account (Thai business registration + Thai bank account) and live keys.
 
 ---
 

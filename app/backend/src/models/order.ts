@@ -1,5 +1,5 @@
 import client from '../database';
-import { Order, OrderProduct, RecentPurchase } from '../types/order.types';
+import { AbandonedPaymentRef, Order, OrderProduct, RecentPurchase } from '../types/order.types';
 
 export class OrderStore {
   async index(filters?: { status?: string; userId?: number }): Promise<Order[]> {
@@ -59,16 +59,18 @@ export class OrderStore {
     userId: number,
     items: { productId: number; quantity: number }[],
     totalCents: number,
-    currency: string
+    currency: string,
+    provider: string,
+    method: string
   ): Promise<Order> {
     const poolClient = await client.connect();
     try {
       await poolClient.query('BEGIN');
 
       const { rows } = await poolClient.query(
-        `INSERT INTO orders (user_id, status, payment_status, total_cents, currency)
-         VALUES ($1, 'active', 'pending', $2, $3) RETURNING *`,
-        [userId, totalCents, currency]
+        `INSERT INTO orders (user_id, status, payment_status, total_cents, currency, payment_provider, payment_method)
+         VALUES ($1, 'active', 'pending', $2, $3, $4, $5) RETURNING *`,
+        [userId, totalCents, currency, provider, method]
       );
       const order = rows[0];
 
@@ -143,15 +145,18 @@ export class OrderStore {
     );
   }
 
-  /** Remove a user's abandoned checkout orders (never paid) and return their PaymentIntent ids. */
-  async deleteAbandonedPaymentOrders(userId: number): Promise<string[]> {
+  /** Remove a user's abandoned checkout orders (never paid) and return their provider payment refs. */
+  async deleteAbandonedPaymentOrders(userId: number): Promise<AbandonedPaymentRef[]> {
     const { rows } = await client.query(
       `DELETE FROM orders
        WHERE user_id=$1 AND status='active' AND payment_status IN ('pending', 'failed')
-       RETURNING payment_intent_id`,
+       RETURNING payment_intent_id, payment_provider`,
       [userId]
     );
-    return rows.map((r) => r.payment_intent_id as string | null).filter((id): id is string => Boolean(id));
+    return rows.map((r) => ({
+      provider: (r.payment_provider as string | null) ?? null,
+      paymentRef: (r.payment_intent_id as string | null) ?? null,
+    }));
   }
 
   async recentPurchases(userId: number, limit: number = 5): Promise<RecentPurchase[]> {
@@ -173,6 +178,9 @@ export class OrderStore {
     if (row.payment_status !== undefined) order.paymentStatus = row.payment_status as string;
     if (row.total_cents !== undefined && row.total_cents !== null) order.totalCents = Number(row.total_cents);
     if (row.currency !== undefined && row.currency !== null) order.currency = row.currency as string;
+    if (row.payment_provider !== undefined && row.payment_provider !== null) order.paymentProvider = row.payment_provider as string;
+    if (row.payment_method !== undefined && row.payment_method !== null) order.paymentMethod = row.payment_method as string;
+    if (row.payment_intent_id !== undefined && row.payment_intent_id !== null) order.paymentIntentId = row.payment_intent_id as string;
     return order;
   }
 
