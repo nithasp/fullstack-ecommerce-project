@@ -86,6 +86,6 @@ This document lists the runtime and development dependencies for both the backen
 
 All environment-specific values are provided as environment variables and are never hard-coded in source files.
 
-See [`docs/infrastructure.md`](./infrastructure.md) for the full list of required environment variables per service.
+See [`app/backend/README.md`](../app/backend/README.md) for the full list of required environment variables.
 
 A template for local development is available at `app/backend/.env.example`.

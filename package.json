@@ -17,9 +17,6 @@
     "test": "npm run test:backend && npm run test:frontend",
 
     "start:backend": "cd app/backend && npm start",
-    "start:frontend": "cd app/frontend && npm start",
-
-    "deploy:backend": "cd app/backend && npm run build && eb deploy",
-    "deploy:frontend": "cd app/frontend && npm run build -- --configuration production && aws s3 sync dist/full-stack-javascript-developer-course4-ex-nitha/browser s3://$S3_BUCKET_NAME --delete --acl public-read"
+    "start:frontend": "cd app/frontend && npm start"
   }
 }
