@@ -134,8 +134,8 @@ const bulkCreate = asyncHandler(async (req: Request, res: Response) => {
 
 const productRoutes = (app: Application) => {
   app.get('/products', verifyAuthToken, index);
-  app.get('/products/popular', mostPopular);
-  app.get('/products/:id', show);
+  app.get('/products/popular', verifyAuthToken, mostPopular);
+  app.get('/products/:id', verifyAuthToken, show);
   app.post('/products', verifyAuthToken, create);
   app.post('/products/bulk', verifyAuthToken, bulkCreate);
   app.put('/products/:id', verifyAuthToken, update);
