@@ -316,7 +316,7 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/products/bulk `
 **cURL add all sample product data from sample-product-data/products.json**
 ```bash
 curl -X POST http://localhost:3000/products/bulk \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImlhdCI6MTc3ODk1NDQ3NiwiZXhwIjoxNzc5MDQwODc2fQ.J9yTGDnIQ2aRzSN6L_hDDjGzQLiKhf6IDr3IWNjKuu8" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d @sample-product-data/products.json
 ```

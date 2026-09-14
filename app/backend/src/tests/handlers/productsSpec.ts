@@ -48,6 +48,11 @@ describe('Product Endpoints', () => {
     expect(Array.isArray(response.body.data)).toBe(true);
   });
 
+  it('GET /products should return list of products without token', async () => {
+    const response = await request.get('/products').expect(200);
+    expect(Array.isArray(response.body.data)).toBe(true);
+  });
+
   it('POST /products should create a product with token', async () => {
     const response = await request
       .post('/products')
