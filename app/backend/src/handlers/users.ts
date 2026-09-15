@@ -3,6 +3,7 @@ import { UserStore } from '../models/user';
 import { OrderStore } from '../models/order';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
+import { requireSelf } from '../utils/authorize';
 import { AppError, sendSuccess } from '../utils/response';
 import { parseId, requireString, optionalString } from '../utils/validate';
 
@@ -15,6 +16,7 @@ const index = asyncHandler(async (_req: Request, res: Response) => {
 
 const show = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'user id');
+  requireSelf(req, id);
   const user = await store.show(id);
   if (!user) throw new AppError(`user with id ${req.params.id} not found`, 404);
   const recentPurchases = await orderStore.recentPurchases(id);
@@ -33,6 +35,7 @@ const create = asyncHandler(async (req: Request, res: Response) => {
 
 const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'user id');
+  requireSelf(req, id);
   const { firstName, lastName, username, password } = req.body;
 
   if (!firstName && !lastName && !username && !password)
@@ -50,6 +53,7 @@ const update = asyncHandler(async (req: Request, res: Response) => {
 
 const destroy = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'user id');
+  requireSelf(req, id);
   const deleted = await store.delete(id);
   if (!deleted) throw new AppError(`user with id ${req.params.id} not found`, 404);
   sendSuccess(res, deleted, 'User deleted.');

@@ -48,9 +48,8 @@ describe('Product Endpoints', () => {
     expect(Array.isArray(response.body.data)).toBe(true);
   });
 
-  it('GET /products should return list of products without token', async () => {
-    const response = await request.get('/products').expect(200);
-    expect(Array.isArray(response.body.data)).toBe(true);
+  it('GET /products should require token', async () => {
+    await request.get('/products').expect(401);
   });
 
   it('POST /products should create a product with token', async () => {
@@ -81,8 +80,15 @@ describe('Product Endpoints', () => {
       .set('Authorization', `Bearer ${token}`);
     const productId = productsResponse.body.data[0].id;
 
-    const response = await request.get(`/products/${productId}`).expect(200);
+    const response = await request
+      .get(`/products/${productId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
     expect(response.body.data.id).toBe(productId);
+  });
+
+  it('GET /products/:id should require token', async () => {
+    await request.get('/products/1').expect(401);
   });
 
   it('GET /products?category= should return products filtered by category', async () => {
@@ -108,9 +114,16 @@ describe('Product Endpoints', () => {
   });
 
   it('GET /products/popular should return top 5 most popular products', async () => {
-    const response = await request.get('/products/popular').expect(200);
+    const response = await request
+      .get('/products/popular')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
     expect(Array.isArray(response.body.data)).toBe(true);
     expect(response.body.data.length).toBeLessThanOrEqual(5);
+  });
+
+  it('GET /products/popular should require token', async () => {
+    await request.get('/products/popular').expect(401);
   });
 
   it('PUT /products/:id should update a product with token', async () => {
@@ -185,6 +198,7 @@ describe('Product Endpoints', () => {
     it('GET /products/:id should return 400 for invalid id', async () => {
       const response = await request
         .get('/products/abc')
+        .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('product id must be a valid positive integer');
     });
@@ -192,6 +206,7 @@ describe('Product Endpoints', () => {
     it('GET /products/:id should return 404 for nonexistent id', async () => {
       const response = await request
         .get('/products/99999')
+        .set('Authorization', `Bearer ${token}`)
         .expect(404);
       expect(response.body.message).toBe('product with id 99999 not found');
     });

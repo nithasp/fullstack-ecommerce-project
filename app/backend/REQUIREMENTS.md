@@ -16,10 +16,10 @@
 | Method | Route        | Auth | Description                              |
 | ------ | ------------ | ---- | ---------------------------------------- |
 | GET    | `/users`     | JWT  | List all users                           |
-| GET    | `/users/:id` | JWT  | Get user by id (includes recent purchases) |
+| GET    | `/users/:id` | JWT  | Get own user (includes recent purchases) — 403 for other users |
 | POST   | `/users`     | JWT  | Create user (admin)                      |
-| PUT    | `/users/:id` | JWT  | Update user                              |
-| DELETE | `/users/:id` | JWT  | Delete user                              |
+| PUT    | `/users/:id` | JWT  | Update own user — 403 for other users    |
+| DELETE | `/users/:id` | JWT  | Delete own user — 403 for other users    |
 
 ### Products
 | Method | Route                | Auth | Description                              |
@@ -33,17 +33,19 @@
 | DELETE | `/products/:id`      | JWT  | Delete product                           |
 
 ### Orders
+Orders are scoped to the token user: another user's order id returns 404, and another user's id in the URL, query or body returns 403.
+
 | Method | Route                            | Auth | Description                      |
 | ------ | -------------------------------- | ---- | -------------------------------- |
-| GET    | `/orders`                        | JWT  | List orders (`?status=` `?userId=`) |
-| GET    | `/orders/:id`                    | JWT  | Get order by id                  |
-| GET    | `/orders/:id/products`           | JWT  | Get products in order            |
-| GET    | `/orders/user/:userId/current`   | JWT  | Active orders for user           |
-| GET    | `/orders/user/:userId/completed` | JWT  | Completed orders for user        |
-| POST   | `/orders`                        | JWT  | Create order                     |
-| POST   | `/orders/:id/products`           | JWT  | Add product to order             |
-| PUT    | `/orders/:id`                    | JWT  | Update order status              |
-| DELETE | `/orders/:id`                    | JWT  | Delete order                     |
+| GET    | `/orders`                        | JWT  | List own orders (`?status=` `?userId=`) |
+| GET    | `/orders/:id`                    | JWT  | Get own order by id              |
+| GET    | `/orders/:id/products`           | JWT  | Get products in own order        |
+| GET    | `/orders/user/:userId/current`   | JWT  | Own active orders                |
+| GET    | `/orders/user/:userId/completed` | JWT  | Own completed orders             |
+| POST   | `/orders`                        | JWT  | Create order for the token user  |
+| POST   | `/orders/:id/products`           | JWT  | Add product to own order         |
+| PUT    | `/orders/:id`                    | JWT  | Update own order status          |
+| DELETE | `/orders/:id`                    | JWT  | Delete own order                 |
 
 ### Cart
 | Method | Route             | Auth | Description                                      |

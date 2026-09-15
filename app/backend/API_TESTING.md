@@ -99,13 +99,14 @@ curl -X POST http://localhost:3000/auth/logout-all -H "Authorization: Bearer $TO
 ## Users
 
 > All user routes require `Authorization: Bearer <token>`.
+> Get, update and delete only work on **your own** account — use your id (`data.user.id` from register/login). Another user's id returns `403`.
 
 **List all users:**
 ```bash
 curl http://localhost:3000/users -H "Authorization: Bearer $TOKEN"
 ```
 
-**Get user by id** (includes 5 most recent purchases as `recentPurchases`):
+**Get your user** (includes 5 most recent purchases as `recentPurchases`):
 ```bash
 curl http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
 ```
@@ -117,14 +118,14 @@ curl -X POST http://localhost:3000/users \
   -d '{"firstName":"Jane","lastName":"Smith","username":"janesmith","password":"pass1234"}'
 ```
 
-**Update user** (at least one of `firstName`, `lastName`, `username`, `password`):
+**Update your user** (at least one of `firstName`, `lastName`, `username`, `password`):
 ```bash
 curl -X PUT http://localhost:3000/users/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Jane"}'
 ```
 
-**Delete user:**
+**Delete your user:**
 ```bash
 curl -X DELETE http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
 ```
@@ -200,13 +201,14 @@ curl -X DELETE http://localhost:3000/products/1 -H "Authorization: Bearer $TOKEN
 
 ## Orders
 
-> All order routes require `Authorization: Bearer <token>`. `status` is `active` or `complete`.
+> All order routes require `Authorization: Bearer <token>` and only work on **your own** orders. `status` is `active` or `complete`.
+> Another user's order id returns `404`. Another user's id in the URL, query or body returns `403`.
 
-**Create order** (`userId` required; `status` defaults to `active`):
+**Create order** (created for the token user; `userId` is optional and must be your own id; `status` defaults to `active`):
 ```bash
 curl -X POST http://localhost:3000/orders \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"userId":1,"status":"active"}'
+  -d '{"status":"active"}'
 ```
 
 **Add product to order:**
@@ -216,10 +218,10 @@ curl -X POST http://localhost:3000/orders/1/products \
   -d '{"productId":1,"quantity":3}'
 ```
 
-**List / filter orders:**
+**List / filter your orders:**
 ```bash
 curl http://localhost:3000/orders -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/orders?status=active&userId=1" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/orders?status=active" -H "Authorization: Bearer $TOKEN"
 ```
 
 **Get / Update / Delete:**
@@ -234,7 +236,7 @@ curl -X PUT http://localhost:3000/orders/1 \
 curl -X DELETE http://localhost:3000/orders/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-**User order queries:**
+**Your order queries** (`:userId` must be your own id):
 ```bash
 curl http://localhost:3000/orders/user/1/current   -H "Authorization: Bearer $TOKEN"
 curl http://localhost:3000/orders/user/1/completed -H "Authorization: Bearer $TOKEN"

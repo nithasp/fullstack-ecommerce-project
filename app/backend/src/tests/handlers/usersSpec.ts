@@ -3,6 +3,7 @@ import app from '../../server';
 
 const request = supertest(app);
 let token: string;
+let userId: number;
 
 describe('User Endpoints', () => {
   const adminUser = {
@@ -15,6 +16,7 @@ describe('User Endpoints', () => {
   beforeAll(async () => {
     const res = await request.post('/auth/register').send(adminUser);
     token = res.body.data.accessToken;
+    userId = res.body.data.user.id;
   });
 
   const testUser = {
@@ -49,12 +51,6 @@ describe('User Endpoints', () => {
   });
 
   it('GET /users/:id should return a user with recentPurchases', async () => {
-    const usersResponse = await request
-      .get('/users')
-      .set('Authorization', `Bearer ${token}`);
-
-    const userId = usersResponse.body.data[0].id;
-
     const response = await request
       .get(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`)
@@ -66,11 +62,6 @@ describe('User Endpoints', () => {
   });
 
   it('GET /users/:id recentPurchases should contain purchase data from completed orders', async () => {
-    const usersResponse = await request
-      .get('/users')
-      .set('Authorization', `Bearer ${token}`);
-    const userId = usersResponse.body.data[0].id;
-
     // Create a product
     const productRes = await request
       .post('/products')
@@ -114,11 +105,6 @@ describe('User Endpoints', () => {
   });
 
   it('GET /users/:id recentPurchases should return at most 5 items', async () => {
-    const usersResponse = await request
-      .get('/users')
-      .set('Authorization', `Bearer ${token}`);
-    const userId = usersResponse.body.data[0].id;
-
     const response = await request
       .get(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`)
@@ -128,12 +114,6 @@ describe('User Endpoints', () => {
   });
 
   it('PUT /users/:id should update a user with token', async () => {
-    const usersResponse = await request
-      .get('/users')
-      .set('Authorization', `Bearer ${token}`);
-
-    const userId = usersResponse.body.data[0].id;
-
     const response = await request
       .put(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`)
@@ -151,25 +131,69 @@ describe('User Endpoints', () => {
     await request.delete('/users/1').expect(401);
   });
 
-  it('DELETE /users/:id should delete a user with token', async () => {
-    const createRes = await request
-      .post('/users')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        firstName: 'Delete',
-        lastName: 'Me',
-        username: 'deleteme_' + Date.now(),
-        password: 'testpass123',
-      });
-
-    const deleteUserId = createRes.body.data.id;
+  it('DELETE /users/:id should delete the token user', async () => {
+    const registerRes = await request.post('/auth/register').send({
+      firstName: 'Delete',
+      lastName: 'Me',
+      username: 'deleteme_' + Date.now(),
+      password: 'testpass123',
+    });
+    const deleteUserId = registerRes.body.data.user.id;
 
     const response = await request
       .delete(`/users/${deleteUserId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${registerRes.body.data.accessToken}`)
       .expect(200);
 
     expect(response.body.data.id).toBe(deleteUserId);
+  });
+
+  describe('Ownership', () => {
+    const otherUser = {
+      firstName: 'Other',
+      lastName: 'User',
+      username: 'otheruser_' + Date.now(),
+      password: 'otherpass123',
+    };
+    let otherUserId: number;
+
+    beforeAll(async () => {
+      const res = await request.post('/auth/register').send(otherUser);
+      otherUserId = res.body.data.user.id;
+    });
+
+    it("GET /users/:id should return 403 for another user's account", async () => {
+      const response = await request
+        .get(`/users/${otherUserId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+      expect(response.body.message).toBe('You can only access your own data');
+    });
+
+    it("PUT /users/:id should return 403 for another user's account and keep their password", async () => {
+      await request
+        .put(`/users/${otherUserId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: 'hijacked123' })
+        .expect(403);
+
+      await request
+        .post('/auth/login')
+        .send({ username: otherUser.username, password: otherUser.password })
+        .expect(200);
+    });
+
+    it("DELETE /users/:id should return 403 for another user's account and keep it", async () => {
+      await request
+        .delete(`/users/${otherUserId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      const response = await request
+        .get('/users')
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.body.data.map((u: { id: number }) => u.id)).toContain(otherUserId);
+    });
   });
 
   describe('Input Validation', () => {
@@ -217,12 +241,27 @@ describe('User Endpoints', () => {
       expect(response.body.message).toBe('user id must be a valid positive integer');
     });
 
-    it('GET /users/:id should return 404 for nonexistent id', async () => {
+    it('GET /users/:id should return 404 when the account no longer exists', async () => {
+      const registerRes = await request.post('/auth/register').send({
+        firstName: 'Gone',
+        lastName: 'User',
+        username: 'goneuser_' + Date.now(),
+        password: 'testpass123',
+      });
+      const goneUserId = registerRes.body.data.user.id;
+      const goneToken = registerRes.body.data.accessToken;
+
+      await request
+        .delete(`/users/${goneUserId}`)
+        .set('Authorization', `Bearer ${goneToken}`)
+        .expect(200);
+
+      // The access token stays valid until it expires, but the account is gone
       const response = await request
-        .get('/users/99999')
-        .set('Authorization', `Bearer ${token}`)
+        .get(`/users/${goneUserId}`)
+        .set('Authorization', `Bearer ${goneToken}`)
         .expect(404);
-      expect(response.body.message).toBe('user with id 99999 not found');
+      expect(response.body.message).toBe(`user with id ${goneUserId} not found`);
     });
 
     it('PUT /users/:id should return 400 for invalid id', async () => {
@@ -236,7 +275,7 @@ describe('User Endpoints', () => {
 
     it('PUT /users/:id should return 400 when no valid fields provided', async () => {
       const response = await request
-        .put('/users/1')
+        .put(`/users/${userId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({})
         .expect(400);

@@ -393,7 +393,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "Includes the 5 most recent purchases as `recentPurchases`."
+            "description": "Your own account, including the 5 most recent purchases as `recentPurchases`. Returns 403 for another user's id."
           },
           "event": [
             {
@@ -469,7 +469,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "Send at least one of `firstName`, `lastName`, `username`, `password`.",
+            "description": "Send at least one of `firstName`, `lastName`, `username`, `password`. Only works on your own account (403 otherwise).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"firstName\": \"Jane\"\n}",
@@ -506,7 +506,8 @@
                 "users",
                 "{{userId}}"
               ]
-            }
+            },
+            "description": "Deletes your own account (403 for another user's id). Register again afterwards to keep using the collection."
           },
           "event": [
             {
@@ -520,7 +521,8 @@
             }
           ]
         }
-      ]
+      ],
+      "description": "Get, update and delete only work on your own account (`{{userId}}` is saved by Login/Register). Another user's id returns 403."
     },
     {
       "name": "Products",
@@ -820,7 +822,8 @@
               "path": [
                 "orders"
               ]
-            }
+            },
+            "description": "Returns only your own orders."
           },
           "event": [
             {
@@ -858,7 +861,7 @@
                 }
               ]
             },
-            "description": "`status` must be `active` or `complete`."
+            "description": "`status` must be `active` or `complete`. `userId` is optional and must be your own id."
           },
           "event": [
             {
@@ -919,10 +922,10 @@
                 "orders"
               ]
             },
-            "description": "`userId` is required. `status` defaults to `active`.",
+            "description": "Creates an order for the token user. `userId` is optional (defaults to you; 403 if it's another user). `status` defaults to `active`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"status\": \"active\"\n}",
+              "raw": "{\n  \"status\": \"active\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1105,7 +1108,8 @@
                 "{{userId}}",
                 "current"
               ]
-            }
+            },
+            "description": "`:userId` must be your own id (403 otherwise)."
           },
           "event": [
             {
@@ -1135,7 +1139,8 @@
                 "{{userId}}",
                 "completed"
               ]
-            }
+            },
+            "description": "`:userId` must be your own id (403 otherwise)."
           },
           "event": [
             {
@@ -1149,7 +1154,8 @@
             }
           ]
         }
-      ]
+      ],
+      "description": "Orders are scoped to the user from the access token. Another user's order id returns 404; another user's id in the URL, query or body returns 403."
     },
     {
       "name": "Cart",

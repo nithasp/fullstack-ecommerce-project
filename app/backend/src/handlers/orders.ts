@@ -1,11 +1,20 @@
 import { Application, Request, Response } from 'express';
+import { Order } from '../types/order.types';
 import { OrderStore } from '../models/order';
 import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
+import { requireSelf } from '../utils/authorize';
 import { AppError, sendSuccess } from '../utils/response';
 import { parseId, requirePositiveInt } from '../utils/validate';
 
 const store = new OrderStore();
+
+// Another user's order is reported as not found so its existence isn't revealed
+const requireOwnOrder = async (id: number, userId: number): Promise<Order> => {
+  const order = await store.show(id);
+  if (!order || order.userId !== userId) throw new AppError(`order with id ${id} not found`, 404);
+  return order;
+};
 
 const index = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
@@ -13,20 +22,19 @@ const index = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError("status filter must be either 'active' or 'complete'", 400);
 
   const userIdParam = req.query.userId as string | undefined;
-  const userId = userIdParam ? parseId(userIdParam, 'userId filter') : undefined;
+  if (userIdParam) requireSelf(req, parseId(userIdParam, 'userId filter'));
 
-  sendSuccess(res, await store.index({ status, userId }), 'Orders fetched.');
+  sendSuccess(res, await store.index({ status, userId: req.user!.userId }), 'Orders fetched.');
 });
 
 const show = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'order id');
-  const order = await store.show(id);
-  if (!order) throw new AppError(`order with id ${req.params.id} not found`, 404);
-  sendSuccess(res, order, 'Order fetched.');
+  sendSuccess(res, await requireOwnOrder(id, req.user!.userId), 'Order fetched.');
 });
 
 const create = asyncHandler(async (req: Request, res: Response) => {
-  const userId = requirePositiveInt(req.body.userId, 'userId');
+  const userId = req.user!.userId;
+  if (req.body.userId !== undefined) requireSelf(req, requirePositiveInt(req.body.userId, 'userId'));
 
   if (req.body.status && !['active', 'complete'].includes(req.body.status))
     throw new AppError("status must be either 'active' or 'complete'", 400);
@@ -36,6 +44,7 @@ const create = asyncHandler(async (req: Request, res: Response) => {
 
 const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'order id');
+  await requireOwnOrder(id, req.user!.userId);
   if (!req.body.status) throw new AppError('status is required', 400);
   if (!['active', 'complete'].includes(req.body.status))
     throw new AppError("status must be either 'active' or 'complete'", 400);
@@ -47,6 +56,7 @@ const update = asyncHandler(async (req: Request, res: Response) => {
 
 const destroy = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'order id');
+  await requireOwnOrder(id, req.user!.userId);
   const deleted = await store.delete(id);
   if (!deleted) throw new AppError(`order with id ${req.params.id} not found`, 404);
   sendSuccess(res, deleted, 'Order deleted.');
@@ -54,21 +64,25 @@ const destroy = asyncHandler(async (req: Request, res: Response) => {
 
 const getOrderProducts = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'order id');
+  await requireOwnOrder(id, req.user!.userId);
   sendSuccess(res, await store.getOrderProducts(id), 'Order products fetched.');
 });
 
 const currentOrderByUser = asyncHandler(async (req: Request, res: Response) => {
   const userId = parseId(req.params.userId, 'userId');
+  requireSelf(req, userId);
   sendSuccess(res, await store.index({ status: 'active', userId }), 'Current order fetched.');
 });
 
 const completedOrdersByUser = asyncHandler(async (req: Request, res: Response) => {
   const userId = parseId(req.params.userId, 'userId');
+  requireSelf(req, userId);
   sendSuccess(res, await store.index({ status: 'complete', userId }), 'Completed orders fetched.');
 });
 
 const addProduct = asyncHandler(async (req: Request, res: Response) => {
   const orderId   = parseId(req.params.id, 'order id in URL');
+  await requireOwnOrder(orderId, req.user!.userId);
   const productId = requirePositiveInt(req.body.productId, 'productId');
   const quantity  = requirePositiveInt(req.body.quantity, 'quantity');
 

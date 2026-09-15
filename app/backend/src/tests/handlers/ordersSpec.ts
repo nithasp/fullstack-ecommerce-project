@@ -54,6 +54,16 @@ describe('Order Endpoints', () => {
     orderId = response.body.data.id;
   });
 
+  it('POST /orders should default to the token user when userId is omitted', async () => {
+    const response = await request
+      .post('/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'active' })
+      .expect(201);
+
+    expect(response.body.data.userId).toBe(userId);
+  });
+
   it('POST /orders should require token', async () => {
     await request.post('/orders').send({ userId }).expect(401);
   });
@@ -234,6 +244,120 @@ describe('Order Endpoints', () => {
     expect(response.body.data.id).toBe(deleteOrderId);
   });
 
+  describe('Ownership', () => {
+    let otherToken: string;
+    let otherUserId: number;
+    let otherOrderId: number;
+
+    beforeAll(async () => {
+      const res = await request.post('/auth/register').send({
+        firstName: 'Other',
+        lastName: 'Customer',
+        username: 'otherordertester_' + Date.now(),
+        password: 'testpass123',
+      });
+      otherToken = res.body.data.accessToken;
+      otherUserId = res.body.data.user.id;
+
+      const orderRes = await request
+        .post('/orders')
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({ status: 'active' });
+      otherOrderId = orderRes.body.data.id;
+    });
+
+    it('GET /orders should only return orders of the token user', async () => {
+      const response = await request
+        .get('/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.data.map((order: Order) => order.id)).not.toContain(otherOrderId);
+      response.body.data.forEach((order: Order) => {
+        expect(order.userId).toBe(userId);
+      });
+    });
+
+    it('GET /orders?userId= should return 403 for another user', async () => {
+      const response = await request
+        .get(`/orders?userId=${otherUserId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+      expect(response.body.message).toBe('You can only access your own data');
+    });
+
+    it('GET /orders/user/:userId/current should return 403 for another user', async () => {
+      await request
+        .get(`/orders/user/${otherUserId}/current`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it('GET /orders/user/:userId/completed should return 403 for another user', async () => {
+      await request
+        .get(`/orders/user/${otherUserId}/completed`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it('POST /orders should return 403 when userId belongs to another user', async () => {
+      await request
+        .post('/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ userId: otherUserId, status: 'active' })
+        .expect(403);
+    });
+
+    it("GET /orders/:id should return 404 for another user's order", async () => {
+      const response = await request
+        .get(`/orders/${otherOrderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+      expect(response.body.message).toBe(`order with id ${otherOrderId} not found`);
+    });
+
+    it("GET /orders/:id/products should return 404 for another user's order", async () => {
+      await request
+        .get(`/orders/${otherOrderId}/products`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it("POST /orders/:id/products should return 404 for another user's order", async () => {
+      await request
+        .post(`/orders/${otherOrderId}/products`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productId, quantity: 1 })
+        .expect(404);
+    });
+
+    it("PUT /orders/:id should return 404 for another user's order and leave it unchanged", async () => {
+      await request
+        .put(`/orders/${otherOrderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'complete' })
+        .expect(404);
+
+      const response = await request
+        .get(`/orders/${otherOrderId}`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(200);
+      expect(response.body.data.status).toBe('active');
+    });
+
+    it("DELETE /orders/:id should return 404 for another user's order and keep it", async () => {
+      await request
+        .delete(`/orders/${otherOrderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+
+      await request
+        .get(`/orders/${otherOrderId}`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(200);
+    });
+  });
+
   describe('Input Validation', () => {
     it('GET /orders should return 400 for invalid status filter', async () => {
       const response = await request
@@ -265,15 +389,6 @@ describe('Order Endpoints', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
       expect(response.body.message).toBe('order with id 99999 not found');
-    });
-
-    it('POST /orders should return 400 when userId is missing', async () => {
-      const response = await request
-        .post('/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ status: 'active' })
-        .expect(400);
-      expect(response.body.message).toBe('userId is required and must be a valid number');
     });
 
     it('POST /orders should return 400 when userId is invalid', async () => {
