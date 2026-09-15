@@ -1,13 +1,19 @@
 # API Testing (cURL)
 
 > Base URL: `http://localhost:3000` — run `npm run watch` first.
+>
+> Prefer Postman? Import [`postman/storefront-api.postman_collection.json`](postman/storefront-api.postman_collection.json) — it covers every route below and saves tokens and ids automatically.
+
+All responses use the shape `{ "status": <code>, "message": "...", "data": ... }`.
+
+Every route except `/`, `/auth/register`, `/auth/login`, `/auth/refresh` and `/auth/logout` requires `Authorization: Bearer <accessToken>`.
 
 ---
 
 ## Quick Walkthrough
 
 ```bash
-# 1. Register and save tokens
+# 1. Register and copy data.accessToken from the response
 curl -s -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"firstName":"John","lastName":"Doe","username":"johndoe","password":"pass1234"}'
@@ -17,11 +23,11 @@ TOKEN="your.access.token"
 # 2. Create products
 curl -s -X POST http://localhost:3000/products \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Keyboard","price":49.99,"category":"electronics"}'
+  -d '{"name":"Keyboard","price":49.99,"category":"Electronics"}'
 
 curl -s -X POST http://localhost:3000/products \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Mouse","price":29.99,"category":"electronics"}'
+  -d '{"name":"Mouse","price":29.99,"category":"Electronics"}'
 
 # 3. Add items to cart and checkout
 curl -s -X POST http://localhost:3000/cart \
@@ -33,14 +39,24 @@ curl -s -X POST http://localhost:3000/cart/checkout \
   -d '{"items":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}]}'
 
 # 4. Most popular products
-curl http://localhost:3000/products/popular
+curl http://localhost:3000/products/popular -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## Health Check
+
+```bash
+curl http://localhost:3000/
 ```
 
 ---
 
 ## Auth
 
-**Register** (returns `accessToken` + `refreshToken`):
+> `register`, `login` and `refresh` are rate limited to 20 requests per 15 minutes. Access tokens expire after 15 minutes.
+
+**Register** (password must be at least 8 characters; returns `user`, `accessToken`, `refreshToken`):
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
@@ -54,7 +70,7 @@ curl -X POST http://localhost:3000/auth/login \
   -d '{"username":"johndoe","password":"pass1234"}'
 ```
 
-**Refresh access token:**
+**Refresh access token** (rotates both tokens — the old refresh token stops working):
 ```bash
 curl -X POST http://localhost:3000/auth/refresh \
   -H "Content-Type: application/json" \
@@ -89,19 +105,19 @@ curl -X POST http://localhost:3000/auth/logout-all -H "Authorization: Bearer $TO
 curl http://localhost:3000/users -H "Authorization: Bearer $TOKEN"
 ```
 
-**Get user by id** (includes 5 most recent purchases):
+**Get user by id** (includes 5 most recent purchases as `recentPurchases`):
 ```bash
 curl http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-**Create user (admin):**
+**Create user** (all four fields required):
 ```bash
 curl -X POST http://localhost:3000/users \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Jane","lastName":"Smith","username":"janesmith","password":"pass1234"}'
 ```
 
-**Update user:**
+**Update user** (at least one of `firstName`, `lastName`, `username`, `password`):
 ```bash
 curl -X PUT http://localhost:3000/users/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -117,7 +133,9 @@ curl -X DELETE http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
 
 ## Products
 
-**Create product** (see [Sample Product Data](#sample-product-data) for more products):
+> All product routes require `Authorization: Bearer <token>`.
+
+**Create product** (`name` and non-negative `price` required; see [Sample Product Data](#sample-product-data) for more products):
 ```bash
 curl -X POST http://localhost:3000/products \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -158,22 +176,22 @@ curl -X POST http://localhost:3000/products/bulk \
 
 **List all / filter by category:**
 ```bash
-curl http://localhost:3000/products
-curl "http://localhost:3000/products?category=gadgets"
+curl http://localhost:3000/products -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/products?category=Electronics" -H "Authorization: Bearer $TOKEN"
 ```
 
 **Most popular (ranked by total quantity ordered):**
 ```bash
-curl http://localhost:3000/products/popular
+curl http://localhost:3000/products/popular -H "Authorization: Bearer $TOKEN"
 ```
 
 **Get / Update / Delete:**
 ```bash
-curl http://localhost:3000/products/1
+curl http://localhost:3000/products/1 -H "Authorization: Bearer $TOKEN"
 
 curl -X PUT http://localhost:3000/products/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"price":14.99}'
+  -d '{"price":14.99,"stock":50}'
 
 curl -X DELETE http://localhost:3000/products/1 -H "Authorization: Bearer $TOKEN"
 ```
@@ -182,18 +200,20 @@ curl -X DELETE http://localhost:3000/products/1 -H "Authorization: Bearer $TOKEN
 
 ## Orders
 
-**Create order:**
+> All order routes require `Authorization: Bearer <token>`. `status` is `active` or `complete`.
+
+**Create order** (`userId` required; `status` defaults to `active`):
 ```bash
 curl -X POST http://localhost:3000/orders \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"user_id":1}'
+  -d '{"userId":1,"status":"active"}'
 ```
 
 **Add product to order:**
 ```bash
 curl -X POST http://localhost:3000/orders/1/products \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"product_id":1,"quantity":3}'
+  -d '{"productId":1,"quantity":3}'
 ```
 
 **List / filter orders:**
@@ -224,18 +244,18 @@ curl http://localhost:3000/orders/user/1/completed -H "Authorization: Bearer $TO
 
 ## Cart
 
-> All cart routes require `Authorization: Bearer <token>`.
+> All cart routes require `Authorization: Bearer <token>` and act on the user from the token.
 
 **Get cart:**
 ```bash
 curl http://localhost:3000/cart -H "Authorization: Bearer $TOKEN"
 ```
 
-**Add item** (increments quantity if same product+type already exists):
+**Add item** (increments quantity if same product+type already exists; `quantity` defaults to 1; `typeId`, `selectedType`, `shopId`, `shopName` are optional):
 ```bash
 curl -X POST http://localhost:3000/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"productId":1,"quantity":2}'
+  -d '{"productId":1,"quantity":2,"typeId":"69999b5d6decb17b3853fc1c","selectedType":{"color":"Black","price":129.99},"shopId":"shop_001","shopName":"TechZone Store"}'
 ```
 
 **Update item quantity:**
@@ -255,7 +275,7 @@ curl -X DELETE http://localhost:3000/cart/1 -H "Authorization: Bearer $TOKEN"
 curl -X DELETE http://localhost:3000/cart -H "Authorization: Bearer $TOKEN"
 ```
 
-**Checkout** (creates a completed order and clears the cart):
+**Checkout** (creates a completed order from `items` and clears the cart):
 ```bash
 curl -X POST http://localhost:3000/cart/checkout \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -266,7 +286,7 @@ curl -X POST http://localhost:3000/cart/checkout \
 
 ## Addresses
 
-> All address routes require `Authorization: Bearer <token>`.
+> All address routes require `Authorization: Bearer <token>` and act on the user from the token.
 
 **List addresses:**
 ```bash
@@ -278,7 +298,7 @@ curl http://localhost:3000/addresses -H "Authorization: Bearer $TOKEN"
 curl http://localhost:3000/addresses/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-**Create address:**
+**Create address** (`fullName`, `address`, `city` required; `label` is `home` | `work` | `other`, defaults to `home`):
 ```bash
 curl -X POST http://localhost:3000/addresses \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \

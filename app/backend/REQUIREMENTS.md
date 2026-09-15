@@ -24,10 +24,11 @@
 ### Products
 | Method | Route                | Auth | Description                              |
 | ------ | -------------------- | ---- | ---------------------------------------- |
-| GET    | `/products`          | No   | List all products (`?category=` to filter) |
-| GET    | `/products/popular`  | No   | Most popular products (by total quantity ordered) |
-| GET    | `/products/:id`      | No   | Get product by id                        |
+| GET    | `/products`          | JWT  | List all products (`?category=` to filter) |
+| GET    | `/products/popular`  | JWT  | Most popular products (by total quantity ordered) |
+| GET    | `/products/:id`      | JWT  | Get product by id                        |
 | POST   | `/products`          | JWT  | Create product                           |
+| POST   | `/products/bulk`     | JWT  | Bulk create products (array body)        |
 | PUT    | `/products/:id`      | JWT  | Update product                           |
 | DELETE | `/products/:id`      | JWT  | Delete product                           |
 
