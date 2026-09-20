@@ -1,10 +1,8 @@
 import client from '../database';
 import { CartItem, UpsertCartItemPayload } from '../types/cart.types';
+import { Pagination } from '../types/pagination.types';
 
-export class CartStore {
-  async getByUser(userId: number): Promise<CartItem[]> {
-    const { rows } = await client.query(
-      `SELECT
+const SELECT_WITH_PRODUCT = `SELECT
          ci.*,
          p.name          AS product_name,
          p.price         AS product_price,
@@ -20,12 +18,47 @@ export class CartStore {
          p.shop_id       AS product_shop_id,
          p.shop_name     AS product_shop_name
        FROM cart_items ci
-       JOIN products p ON ci.product_id = p.id
-       WHERE ci.user_id = $1
-       ORDER BY ci.created_at ASC`,
+       JOIN products p ON ci.product_id = p.id`;
+
+export class CartStore {
+  async getByUser(userId: number): Promise<CartItem[]> {
+    const { rows } = await client.query(
+      `${SELECT_WITH_PRODUCT} WHERE ci.user_id = $1 ORDER BY ci.created_at ASC`,
       [userId]
     );
     return rows.map((row) => this.mapRow(row));
+  }
+
+  // Admin: every user's cart items, optionally filtered to one user
+  async getAll(filters: { userId?: number }, page: Pagination): Promise<CartItem[]> {
+    const params: number[] = [];
+    let sql = SELECT_WITH_PRODUCT;
+    if (filters.userId) { params.push(filters.userId); sql += ` WHERE ci.user_id = $${params.length}`; }
+    params.push(page.limit);  sql += ` ORDER BY ci.user_id ASC, ci.created_at ASC LIMIT $${params.length}`;
+    params.push(page.offset); sql += ` OFFSET $${params.length}`;
+    const { rows } = await client.query(sql, params);
+    return rows.map((row) => this.mapRow(row));
+  }
+
+  // Admin: a cart item by id regardless of owner
+  async showById(cartItemId: number): Promise<CartItem | null> {
+    const { rows } = await client.query(`${SELECT_WITH_PRODUCT} WHERE ci.id = $1`, [cartItemId]);
+    return rows[0] ? this.mapRow(rows[0]) : null;
+  }
+
+  // Admin: update any user's cart item
+  async updateQuantityById(cartItemId: number, quantity: number): Promise<CartItem | null> {
+    const { rows } = await client.query(
+      `UPDATE cart_items SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [quantity, cartItemId]
+    );
+    return rows[0] ? this.mapRow(rows[0]) : null;
+  }
+
+  // Admin: remove any user's cart item
+  async removeById(cartItemId: number): Promise<CartItem | null> {
+    const { rows } = await client.query(`DELETE FROM cart_items WHERE id = $1 RETURNING *`, [cartItemId]);
+    return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
   async upsert(userId: number, payload: UpsertCartItemPayload): Promise<CartItem> {
@@ -100,7 +133,7 @@ export class CartStore {
       updatedAt: row.updated_at,
     };
 
-    // Joined product fields — only present when fetching via getByUser
+    // Joined product fields — only present when the query joins products
     if (row.product_name !== undefined)         item['productName']        = row.product_name;
     if (row.product_price !== undefined)        item['productPrice']       = row.product_price;
     if (row.product_category !== undefined)     item['productCategory']    = row.product_category;

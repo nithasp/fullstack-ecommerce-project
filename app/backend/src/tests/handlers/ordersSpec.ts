@@ -2,6 +2,7 @@ import supertest from 'supertest';
 import app from '../../server';
 import { Order } from '../../types/order.types';
 import { Product } from '../../types/product.types';
+import { createAdmin } from '../support/admin';
 
 const request = supertest(app);
 let token: string;
@@ -30,9 +31,10 @@ describe('Order Endpoints', () => {
       stock: 20,
       isActive: true,
     };
+    const admin = await createAdmin(request, 'orderadmin');
     const productResponse = await request
       .post('/products')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${admin.token}`)
       .send(product);
     productId = productResponse.body.data.id;
   });

@@ -6,12 +6,16 @@ import { verifyAuthToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/response';
 import { config } from '../config';
+import { User } from '../types/user.types';
 
 const userStore = new UserStore();
 const refreshTokenStore = new RefreshTokenStore();
 
-const generateAccessToken = (userId: number): string =>
-  jwt.sign({ userId }, config.tokenSecret, { expiresIn: config.accessTokenExpiry as jwt.SignOptions['expiresIn'] });
+// The role claim lets ordinary routes authorize without a DB hit; admin routes re-verify it against the DB
+const generateAccessToken = (user: User): string =>
+  jwt.sign({ userId: user.id, role: user.role ?? 'customer' }, config.tokenSecret, {
+    expiresIn: config.accessTokenExpiry as jwt.SignOptions['expiresIn'],
+  });
 
 const register = asyncHandler(async (req: Request, res: Response) => {
   const { username, password, firstName, lastName } = req.body;
@@ -24,6 +28,8 @@ const register = asyncHandler(async (req: Request, res: Response) => {
   const existing = await userStore.findByUsername(username.trim());
   if (existing) throw new AppError('Username already exists', 409);
 
+  // Only the listed fields are read from the body; a "role" sent here is ignored,
+  // so self-registration can never create an admin (OWASP API3 mass assignment)
   const user = await userStore.create({
     username: username.trim(),
     password,
@@ -31,7 +37,7 @@ const register = asyncHandler(async (req: Request, res: Response) => {
     lastName: lastName?.trim() || '',
   });
 
-  const accessToken = generateAccessToken(user.id!);
+  const accessToken = generateAccessToken(user);
   const refreshToken = await refreshTokenStore.create(user.id!, config.refreshTokenExpiryMs);
 
   res.status(201).json({ status: 201, message: 'Account created successfully.', data: { user, accessToken, refreshToken } });
@@ -48,7 +54,7 @@ const login = asyncHandler(async (req: Request, res: Response) => {
   const user = await userStore.authenticate(username.trim(), password);
   if (!user) throw new AppError('Invalid username or password', 401);
 
-  const accessToken = generateAccessToken(user.id!);
+  const accessToken = generateAccessToken(user);
   const refreshToken = await refreshTokenStore.create(user.id!, config.refreshTokenExpiryMs);
 
   // Fire-and-forget: clean up expired tokens without blocking the response
@@ -67,7 +73,11 @@ const refresh = asyncHandler(async (req: Request, res: Response) => {
 
   await refreshTokenStore.deleteByToken(refreshToken);
 
-  const accessToken = generateAccessToken(stored.user_id);
+  // Re-read the account so a refreshed token carries the current role and a deleted account can't refresh
+  const user = await userStore.show(stored.user_id);
+  if (!user) throw new AppError('Invalid or expired refresh token', 401);
+
+  const accessToken = generateAccessToken(user);
   const newRefreshToken = await refreshTokenStore.create(stored.user_id, config.refreshTokenExpiryMs);
 
   res.json({ status: 200, message: 'Token refreshed successfully.', data: { accessToken, refreshToken: newRefreshToken } });

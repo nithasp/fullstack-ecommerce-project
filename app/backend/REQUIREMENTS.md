@@ -12,14 +12,17 @@
 | POST   | `/auth/logout-all`  | JWT  | Revoke all sessions for current user |
 | GET    | `/auth/me`          | JWT  | Get current authenticated user       |
 
+### Roles
+Every account has a `role`: `customer` (default) or `admin`. Self-registration always creates a customer; a `role` in the register or update body is ignored. Admins are created by `npm run seed:admin`, `POST /admin/users`, or `PUT /admin/users/:id/role`. Admins bypass the ownership rules below and can use the `/admin` routes.
+
 ### Users
-| Method | Route        | Auth | Description                              |
-| ------ | ------------ | ---- | ---------------------------------------- |
-| GET    | `/users`     | JWT  | List all users                           |
-| GET    | `/users/:id` | JWT  | Get own user (includes recent purchases) — 403 for other users |
-| POST   | `/users`     | JWT  | Create user (admin)                      |
-| PUT    | `/users/:id` | JWT  | Update own user — 403 for other users    |
-| DELETE | `/users/:id` | JWT  | Delete own user — 403 for other users    |
+| Method | Route        | Auth  | Description                              |
+| ------ | ------------ | ----- | ---------------------------------------- |
+| GET    | `/users`     | Admin | List all users                           |
+| GET    | `/users/:id` | JWT   | Get own user (includes recent purchases) — 403 for other users unless admin |
+| POST   | `/users`     | Admin | Create user                              |
+| PUT    | `/users/:id` | JWT   | Update own user (profile fields only) — 403 for other users unless admin |
+| DELETE | `/users/:id` | JWT   | Delete own user — 403 for other users unless admin |
 
 ### Products
 | Method | Route                | Auth | Description                              |
@@ -27,13 +30,13 @@
 | GET    | `/products`          | JWT  | List all products (`?category=` to filter) |
 | GET    | `/products/popular`  | JWT  | Most popular products (by total quantity ordered) |
 | GET    | `/products/:id`      | JWT  | Get product by id                        |
-| POST   | `/products`          | JWT  | Create product                           |
-| POST   | `/products/bulk`     | JWT  | Bulk create products (array body)        |
-| PUT    | `/products/:id`      | JWT  | Update product                           |
-| DELETE | `/products/:id`      | JWT  | Delete product                           |
+| POST   | `/products`          | Admin | Create product                          |
+| POST   | `/products/bulk`     | Admin | Bulk create products (array body)       |
+| PUT    | `/products/:id`      | Admin | Update product                          |
+| DELETE | `/products/:id`      | Admin | Delete product                          |
 
 ### Orders
-Orders are scoped to the token user: another user's order id returns 404, and another user's id in the URL, query or body returns 403.
+Orders are scoped to the token user: another user's order id returns 404, and another user's id in the URL, query or body returns 403. Admin tokens are exempt from both rules.
 
 | Method | Route                            | Auth | Description                      |
 | ------ | -------------------------------- | ---- | -------------------------------- |
@@ -66,7 +69,38 @@ Orders are scoped to the token user: another user's order id returns 404, and an
 | PUT    | `/addresses/:id`  | JWT  | Update address       |
 | DELETE | `/addresses/:id`  | JWT  | Delete address       |
 
-**Auth:** Protected routes require `Authorization: Bearer <accessToken>`. Tokens are issued by `/auth/register` and `/auth/login`.
+### Admin
+All routes require an admin token. The role is re-read from the database on every request and every non-GET request is audit-logged. List routes accept `?limit=` (1–100, default 50) and `?offset=`.
+
+| Method | Route                          | Description                                   |
+| ------ | ------------------------------ | --------------------------------------------- |
+| GET    | `/admin/users`                 | List every user (with role)                   |
+| GET    | `/admin/users/:id`             | Any user, with recent purchases               |
+| POST   | `/admin/users`                 | Create user; optional `role`                  |
+| PUT    | `/admin/users/:id`             | Update any user's profile fields              |
+| PUT    | `/admin/users/:id/role`        | Set `customer` / `admin`; revokes that user's refresh tokens; not on self |
+| DELETE | `/admin/users/:id`             | Delete any user; not on self                  |
+| GET    | `/admin/orders`                | Every order (`?status=` `?userId=`)           |
+| GET    | `/admin/orders/:id`            | Any order                                     |
+| POST   | `/admin/orders`                | Create order for `userId` in body             |
+| PUT    | `/admin/orders/:id`            | Update any order status                       |
+| DELETE | `/admin/orders/:id`            | Delete any order                              |
+| GET    | `/admin/orders/:id/products`   | Products in any order                         |
+| POST   | `/admin/orders/:id/products`   | Add product to any order                      |
+| GET    | `/admin/carts`                 | Every user's cart items (`?userId=`)          |
+| GET    | `/admin/carts/:userId`         | One user's cart                               |
+| POST   | `/admin/carts/:userId`         | Add item to a user's cart                     |
+| DELETE | `/admin/carts/:userId`         | Clear a user's cart                           |
+| GET    | `/admin/cart-items/:id`        | Any cart item                                 |
+| PUT    | `/admin/cart-items/:id`        | Update any cart item quantity                 |
+| DELETE | `/admin/cart-items/:id`        | Remove any cart item                          |
+| GET    | `/admin/addresses`             | Every user's addresses (`?userId=`)           |
+| GET    | `/admin/addresses/:id`         | Any address                                   |
+| POST   | `/admin/addresses`             | Create address for `userId` in body           |
+| PUT    | `/admin/addresses/:id`         | Update any address                            |
+| DELETE | `/admin/addresses/:id`         | Delete any address                            |
+
+**Auth:** Protected routes require `Authorization: Bearer <accessToken>`. Tokens are issued by `/auth/register` and `/auth/login` and carry `userId` and `role`.
 
 ---
 
@@ -80,6 +114,7 @@ Orders are scoped to the token user: another user's order id returns 404, and an
 | last_name  | VARCHAR(100) | NOT NULL        |
 | username   | VARCHAR(100) | UNIQUE NOT NULL |
 | password   | VARCHAR(255) | NOT NULL        |
+| role       | VARCHAR(20)  | NOT NULL, DEFAULT 'customer', CHECK IN ('customer', 'admin') |
 
 ### products
 | Column         | Type           | Constraints        |
@@ -158,7 +193,8 @@ Unique constraint: `(user_id, product_id, type_id)`
 ## Data Shapes (TypeScript)
 
 ```typescript
-User        { id: number, firstName: string, lastName: string, username: string, password: string }
+User        { id: number, firstName: string, lastName: string, username: string, password: string,
+              role: 'customer' | 'admin' }
 Product     { id: number, name: string, price: number, category?: string, image?: string,
               description?: string, stock: number, isActive: boolean, shopId?: string, shopName?: string }
 Order       { id: number, userId: number, status: 'active' | 'complete' }

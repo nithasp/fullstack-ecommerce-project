@@ -6,28 +6,28 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendSuccess } from '../utils/response';
 import { parseId, requirePositiveInt } from '../utils/validate';
 import client from '../database';
+import { UpsertCartItemPayload } from '../types/cart.types';
 
 const cartStore = new CartStore();
 const orderStore = new OrderStore();
+
+export function parseCartItemPayload(body: Record<string, unknown>): UpsertCartItemPayload {
+  return {
+    productId:    requirePositiveInt(body.productId, 'productId'),
+    quantity:     requirePositiveInt(body.quantity ?? 1, 'quantity'),
+    typeId:       typeof body.typeId === 'string' ? body.typeId : null,
+    selectedType: body.selectedType && typeof body.selectedType === 'object' ? body.selectedType as Record<string, unknown> : null,
+    shopId:       typeof body.shopId === 'string' ? body.shopId : null,
+    shopName:     typeof body.shopName === 'string' ? body.shopName : null,
+  };
+}
 
 const getCart = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await cartStore.getByUser(req.user!.userId), 'Cart fetched.');
 });
 
 const addItem = asyncHandler(async (req: Request, res: Response) => {
-  const userId     = req.user!.userId;
-  const productId  = requirePositiveInt(req.body.productId, 'productId');
-  const quantity   = requirePositiveInt(req.body.quantity ?? 1, 'quantity');
-
-  const item = await cartStore.upsert(userId, {
-    productId,
-    quantity,
-    typeId:       req.body.typeId      ?? null,
-    selectedType: req.body.selectedType ?? null,
-    shopId:       req.body.shopId      ?? null,
-    shopName:     req.body.shopName    ?? null,
-  });
-
+  const item = await cartStore.upsert(req.user!.userId, parseCartItemPayload(req.body));
   sendSuccess(res, item, 'Item added to cart.', 201);
 });
 

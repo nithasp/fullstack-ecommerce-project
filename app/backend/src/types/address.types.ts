@@ -13,7 +13,7 @@ export interface Address {
 
 export interface AddressForm {
   fullName: string;
-  phone?: string;
+  phone?: string | null; // null clears the stored phone on update
   address: string;
   city: string;
   label: 'home' | 'work' | 'other';

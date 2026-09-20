@@ -1,5 +1,6 @@
 import client from '../database';
 import { Address, AddressForm } from '../types/address.types';
+import { Pagination } from '../types/pagination.types';
 
 export class AddressStore {
   async getByUser(userId: number): Promise<Address[]> {
@@ -8,6 +9,23 @@ export class AddressStore {
       [userId]
     );
     return rows.map(this.mapRow);
+  }
+
+  // Admin: every user's addresses, optionally filtered to one user
+  async getAll(filters: { userId?: number }, page: Pagination): Promise<Address[]> {
+    const params: number[] = [];
+    let sql = 'SELECT * FROM addresses';
+    if (filters.userId) { params.push(filters.userId); sql += ` WHERE user_id = $${params.length}`; }
+    params.push(page.limit);  sql += ` ORDER BY user_id ASC, is_default DESC, created_at ASC LIMIT $${params.length}`;
+    params.push(page.offset); sql += ` OFFSET $${params.length}`;
+    const { rows } = await client.query(sql, params);
+    return rows.map(this.mapRow);
+  }
+
+  // Admin: an address by id regardless of owner
+  async showById(id: number): Promise<Address | null> {
+    const { rows } = await client.query(`SELECT * FROM addresses WHERE id = $1`, [id]);
+    return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
   async show(id: number, userId: number): Promise<Address | null> {

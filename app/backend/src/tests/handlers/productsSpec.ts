@@ -1,9 +1,11 @@
 import supertest from 'supertest';
 import app from '../../server';
 import { Product } from '../../types/product.types';
+import { createAdmin } from '../support/admin';
 
 const request = supertest(app);
-let token: string;
+let token: string;       // customer: may read the catalog
+let adminToken: string;  // admin: may create, update and delete products
 
 describe('Product Endpoints', () => {
   beforeAll(async () => {
@@ -15,6 +17,7 @@ describe('Product Endpoints', () => {
     };
     const response = await request.post('/auth/register').send(user);
     token = response.body.data.accessToken;
+    adminToken = (await createAdmin(request, 'productadmin')).token;
   });
 
   const testProduct: Product = {
@@ -52,10 +55,10 @@ describe('Product Endpoints', () => {
     await request.get('/products').expect(401);
   });
 
-  it('POST /products should create a product with token', async () => {
+  it('POST /products should create a product with an admin token', async () => {
     const response = await request
       .post('/products')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send(testProduct)
       .expect(201);
 
@@ -72,6 +75,51 @@ describe('Product Endpoints', () => {
 
   it('POST /products should require token', async () => {
     await request.post('/products').send(testProduct).expect(401);
+  });
+
+  describe('Admin-only writes', () => {
+    it('POST /products should return 403 for a customer', async () => {
+      const response = await request
+        .post('/products')
+        .set('Authorization', `Bearer ${token}`)
+        .send(testProduct)
+        .expect(403);
+      expect(response.body.message).toBe('Admin access required');
+    });
+
+    it('POST /products/bulk should return 403 for a customer', async () => {
+      await request
+        .post('/products/bulk')
+        .set('Authorization', `Bearer ${token}`)
+        .send([testProduct])
+        .expect(403);
+    });
+
+    it('PUT /products/:id should return 403 for a customer and leave the product unchanged', async () => {
+      const list = await request.get('/products').set('Authorization', `Bearer ${token}`);
+      const product = list.body.data[0];
+
+      await request
+        .put(`/products/${product.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Tampered' })
+        .expect(403);
+
+      const after = await request.get(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(200);
+      expect(after.body.data.name).toBe(product.name);
+    });
+
+    it('DELETE /products/:id should return 403 for a customer and keep the product', async () => {
+      const list = await request.get('/products').set('Authorization', `Bearer ${token}`);
+      const product = list.body.data[0];
+
+      await request
+        .delete(`/products/${product.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      await request.get(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(200);
+    });
   });
 
   it('GET /products/:id should return a product', async () => {
@@ -126,7 +174,7 @@ describe('Product Endpoints', () => {
     await request.get('/products/popular').expect(401);
   });
 
-  it('PUT /products/:id should update a product with token', async () => {
+  it('PUT /products/:id should update a product with an admin token', async () => {
     const productsResponse = await request
       .get('/products')
       .set('Authorization', `Bearer ${token}`);
@@ -134,7 +182,7 @@ describe('Product Endpoints', () => {
 
     const response = await request
       .put(`/products/${productId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Updated Product', price: 59.99, description: 'Updated description' })
       .expect(200);
 
@@ -151,17 +199,17 @@ describe('Product Endpoints', () => {
     await request.delete('/products/1').expect(401);
   });
 
-  it('DELETE /products/:id should delete a product with token', async () => {
+  it('DELETE /products/:id should delete a product with an admin token', async () => {
     const createRes = await request
       .post('/products')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'To Delete', price: 1.0, category: 'Temp' });
 
     const deleteProductId = createRes.body.data.id;
 
     const response = await request
       .delete(`/products/${deleteProductId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body.data.id).toBe(deleteProductId);
@@ -171,7 +219,7 @@ describe('Product Endpoints', () => {
     it('POST /products should return 400 when name is missing', async () => {
       const response = await request
         .post('/products')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ price: 9.99 })
         .expect(400);
       expect(response.body.message).toBe('name is required and must be a non-empty string');
@@ -180,7 +228,7 @@ describe('Product Endpoints', () => {
     it('POST /products should return 400 when price is missing', async () => {
       const response = await request
         .post('/products')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'No Price Product' })
         .expect(400);
       expect(response.body.message).toBe('price is required and must be a valid number');
@@ -189,7 +237,7 @@ describe('Product Endpoints', () => {
     it('POST /products should return 400 when price is negative', async () => {
       const response = await request
         .post('/products')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'Negative Price', price: -5 })
         .expect(400);
       expect(response.body.message).toBe('price must be a non-negative number');
@@ -214,7 +262,7 @@ describe('Product Endpoints', () => {
     it('PUT /products/:id should return 400 for invalid id', async () => {
       const response = await request
         .put('/products/abc')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'Test' })
         .expect(400);
       expect(response.body.message).toBe('product id must be a valid positive integer');
@@ -223,7 +271,7 @@ describe('Product Endpoints', () => {
     it('PUT /products/:id should return 400 when no valid fields provided', async () => {
       const response = await request
         .put('/products/1')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({})
         .expect(400);
       expect(response.body.message).toBe('at least one field is required to update');
@@ -232,7 +280,7 @@ describe('Product Endpoints', () => {
     it('PUT /products/:id should return 400 when name is empty string', async () => {
       const response = await request
         .put('/products/1')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: '   ' })
         .expect(400);
       expect(response.body.message).toBe('name must be a non-empty string');
@@ -241,7 +289,7 @@ describe('Product Endpoints', () => {
     it('PUT /products/:id should return 400 when price is invalid', async () => {
       const response = await request
         .put('/products/1')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ price: 'abc' })
         .expect(400);
       expect(response.body.message).toBe('price must be a valid number');
@@ -250,7 +298,7 @@ describe('Product Endpoints', () => {
     it('PUT /products/:id should return 400 when price is negative', async () => {
       const response = await request
         .put('/products/1')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ price: -10 })
         .expect(400);
       expect(response.body.message).toBe('price must be a non-negative number');
@@ -259,7 +307,7 @@ describe('Product Endpoints', () => {
     it('DELETE /products/:id should return 400 for invalid id', async () => {
       const response = await request
         .delete('/products/abc')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
       expect(response.body.message).toBe('product id must be a valid positive integer');
     });

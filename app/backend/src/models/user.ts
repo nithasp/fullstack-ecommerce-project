@@ -1,13 +1,16 @@
 import client from '../database';
 import bcrypt from 'bcrypt';
-import { User } from '../types/user.types';
+import { User, UserRole } from '../types/user.types';
+import { Pagination } from '../types/pagination.types';
 
 const { BCRYPT_PASSWORD, SALT_ROUNDS } = process.env;
-const SAFE_FIELDS = 'id, first_name, last_name, username';
+const SAFE_FIELDS = 'id, first_name, last_name, username, role';
 
 export class UserStore {
-  async index(): Promise<User[]> {
-    const { rows } = await client.query(`SELECT ${SAFE_FIELDS} FROM users`);
+  async index(page?: Pagination): Promise<User[]> {
+    const { rows } = page
+      ? await client.query(`SELECT ${SAFE_FIELDS} FROM users ORDER BY id ASC LIMIT $1 OFFSET $2`, [page.limit, page.offset])
+      : await client.query(`SELECT ${SAFE_FIELDS} FROM users ORDER BY id ASC`);
     return rows.map(this.mapRow);
   }
 
@@ -19,8 +22,8 @@ export class UserStore {
   async create(user: User): Promise<User> {
     const hash = bcrypt.hashSync(user.password + BCRYPT_PASSWORD, parseInt(SALT_ROUNDS as string));
     const { rows } = await client.query(
-      `INSERT INTO users (first_name, last_name, username, password) VALUES ($1, $2, $3, $4) RETURNING ${SAFE_FIELDS}`,
-      [user.firstName, user.lastName, user.username, hash]
+      `INSERT INTO users (first_name, last_name, username, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING ${SAFE_FIELDS}`,
+      [user.firstName, user.lastName, user.username, hash, user.role ?? 'customer']
     );
     return this.mapRow(rows[0]);
   }
@@ -38,6 +41,7 @@ export class UserStore {
       fields.push(`password=$${i++}`);
       values.push(hash);
     }
+    if (user.role)      { fields.push(`role=$${i++}`);       values.push(user.role); }
 
     values.push(id);
     const { rows } = await client.query(
@@ -51,6 +55,14 @@ export class UserStore {
     const { rows } = await client.query(
       `DELETE FROM users WHERE id=$1 RETURNING ${SAFE_FIELDS}`,
       [id]
+    );
+    return rows[0] ? this.mapRow(rows[0]) : rows[0];
+  }
+
+  async updateRole(id: number, role: UserRole): Promise<User | undefined> {
+    const { rows } = await client.query(
+      `UPDATE users SET role=$1 WHERE id=$2 RETURNING ${SAFE_FIELDS}`,
+      [role, id]
     );
     return rows[0] ? this.mapRow(rows[0]) : rows[0];
   }
@@ -76,6 +88,7 @@ export class UserStore {
       lastName: row.last_name as string,
       username: row.username as string,
       password: row.password as string,
+      role: (row.role as UserRole | undefined) ?? 'customer',
     };
   }
 }

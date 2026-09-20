@@ -1,22 +1,25 @@
 import supertest from 'supertest';
 import app from '../../server';
+import { createAdmin } from '../support/admin';
 
 const request = supertest(app);
-let token: string;
+let token: string;       // customer: own-account routes
 let userId: number;
+let adminToken: string;  // admin: list/create users, create products
 
 describe('User Endpoints', () => {
-  const adminUser = {
-    username: 'admin_userstest_' + Date.now(),
-    password: 'adminpass123',
-    firstName: 'Admin',
+  const customer = {
+    username: 'customer_userstest_' + Date.now(),
+    password: 'customerpass123',
+    firstName: 'Customer',
     lastName: 'Test',
   };
 
   beforeAll(async () => {
-    const res = await request.post('/auth/register').send(adminUser);
+    const res = await request.post('/auth/register').send(customer);
     token = res.body.data.accessToken;
     userId = res.body.data.user.id;
+    adminToken = (await createAdmin(request, 'usersadmin')).token;
   });
 
   const testUser = {
@@ -26,28 +29,46 @@ describe('User Endpoints', () => {
     password: 'testpass123',
   };
 
-  it('POST /users should create a new user', async () => {
+  it('POST /users should create a new user with an admin token', async () => {
     const response = await request
       .post('/users')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send(testUser)
       .expect(201);
 
     expect(response.body.data).toBeDefined();
     expect(response.body.data.username).toBe(testUser.username);
+    expect(response.body.data.role).toBe('customer');
+  });
+
+  it('POST /users should return 403 for a customer', async () => {
+    await request
+      .post('/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...testUser, username: 'blocked_' + Date.now() })
+      .expect(403);
   });
 
   it('GET /users should require token', async () => {
     await request.get('/users').expect(401);
   });
 
-  it('GET /users should return list of users with token', async () => {
+  it('GET /users should return 403 for a customer', async () => {
     const response = await request
       .get('/users')
       .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+    expect(response.body.message).toBe('Admin access required');
+  });
+
+  it('GET /users should return list of users with an admin token', async () => {
+    const response = await request
+      .get('/users')
+      .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(Array.isArray(response.body.data)).toBe(true);
+    response.body.data.forEach((u: { password?: string }) => expect(u.password).toBeUndefined());
   });
 
   it('GET /users/:id should return a user with recentPurchases', async () => {
@@ -65,7 +86,7 @@ describe('User Endpoints', () => {
     // Create a product
     const productRes = await request
       .post('/products')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Recent Purchase Item', price: 29.99, category: 'TestCat' });
     const productId = productRes.body.data.id;
 
@@ -191,7 +212,7 @@ describe('User Endpoints', () => {
 
       const response = await request
         .get('/users')
-        .set('Authorization', `Bearer ${token}`);
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(response.body.data.map((u: { id: number }) => u.id)).toContain(otherUserId);
     });
   });
@@ -200,7 +221,7 @@ describe('User Endpoints', () => {
     it('POST /users should return 400 when firstName is missing', async () => {
       const response = await request
         .post('/users')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ lastName: 'Test', username: 'noname', password: 'pass123' })
         .expect(400);
       expect(response.body.message).toBe('firstName is required and must be a non-empty string');
@@ -209,7 +230,7 @@ describe('User Endpoints', () => {
     it('POST /users should return 400 when lastName is missing', async () => {
       const response = await request
         .post('/users')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ firstName: 'Test', username: 'nolast', password: 'pass123' })
         .expect(400);
       expect(response.body.message).toBe('lastName is required and must be a non-empty string');
@@ -218,7 +239,7 @@ describe('User Endpoints', () => {
     it('POST /users should return 400 when username is missing', async () => {
       const response = await request
         .post('/users')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ firstName: 'Test', lastName: 'User', password: 'pass123' })
         .expect(400);
       expect(response.body.message).toBe('username is required and must be a non-empty string');
@@ -227,7 +248,7 @@ describe('User Endpoints', () => {
     it('POST /users should return 400 when password is missing', async () => {
       const response = await request
         .post('/users')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ firstName: 'Test', lastName: 'User', username: 'nopass' })
         .expect(400);
       expect(response.body.message).toBe('password is required and must be a non-empty string');

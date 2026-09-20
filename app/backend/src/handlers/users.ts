@@ -1,7 +1,7 @@
 import { Application, Request, Response } from 'express';
 import { UserStore } from '../models/user';
 import { OrderStore } from '../models/order';
-import { verifyAuthToken } from '../middleware/auth';
+import { verifyAuthToken, requireAdmin } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireSelf } from '../utils/authorize';
 import { AppError, sendSuccess } from '../utils/response';
@@ -33,6 +33,7 @@ const create = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, newUser, 'User created.', 201);
 });
 
+// Only these four fields are writable here; role changes go through PUT /admin/users/:id/role (OWASP API3)
 const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'user id');
   requireSelf(req, id);
@@ -59,11 +60,13 @@ const destroy = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, deleted, 'User deleted.');
 });
 
+// Listing and creating accounts is an admin function; get/update/delete are limited to the token user
+// unless the token belongs to an admin (OWASP API1/API5)
 const userRoutes = (app: Application) => {
-  app.get('/users',      verifyAuthToken, index);
-  app.get('/users/:id',  verifyAuthToken, show);
-  app.post('/users',     verifyAuthToken, create);
-  app.put('/users/:id',  verifyAuthToken, update);
+  app.get('/users',        verifyAuthToken, requireAdmin, index);
+  app.get('/users/:id',    verifyAuthToken, show);
+  app.post('/users',       verifyAuthToken, requireAdmin, create);
+  app.put('/users/:id',    verifyAuthToken, update);
   app.delete('/users/:id', verifyAuthToken, destroy);
 };
 

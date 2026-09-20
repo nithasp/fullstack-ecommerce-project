@@ -1,8 +1,9 @@
 import client from '../database';
 import { Order, OrderProduct, RecentPurchase } from '../types/order.types';
+import { Pagination } from '../types/pagination.types';
 
 export class OrderStore {
-  async index(filters?: { status?: string; userId?: number }): Promise<Order[]> {
+  async index(filters?: { status?: string; userId?: number }, page?: Pagination): Promise<Order[]> {
     let sql = 'SELECT * FROM orders';
     const params: (string | number)[] = [];
     const conditions: string[] = [];
@@ -10,6 +11,11 @@ export class OrderStore {
     if (filters?.status) { params.push(filters.status); conditions.push(`status=$${params.length}`); }
     if (filters?.userId) { params.push(filters.userId); conditions.push(`user_id=$${params.length}`); }
     if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+    sql += ' ORDER BY id ASC';
+    if (page) {
+      params.push(page.limit);  sql += ` LIMIT $${params.length}`;
+      params.push(page.offset); sql += ` OFFSET $${params.length}`;
+    }
 
     const { rows } = await client.query(sql, params);
     return rows.map(this.mapOrderRow);

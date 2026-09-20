@@ -1,7 +1,7 @@
 import { Application, Request, Response } from 'express';
 import { Product } from '../types/product.types';
 import { ProductStore } from '../models/product';
-import { verifyAuthToken } from '../middleware/auth';
+import { verifyAuthToken, requireAdmin } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendSuccess } from '../utils/response';
 import { parseId, requireString, optionalString } from '../utils/validate';
@@ -132,14 +132,15 @@ const bulkCreate = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await store.bulkCreate(products), `${products.length} products created.`, 201);
 });
 
+// Catalog reads are open to any signed-in user; catalog writes are an admin function (OWASP API5)
 const productRoutes = (app: Application) => {
-  app.get('/products', verifyAuthToken, index);
-  app.get('/products/popular', verifyAuthToken, mostPopular);
-  app.get('/products/:id', verifyAuthToken, show);
-  app.post('/products', verifyAuthToken, create);
-  app.post('/products/bulk', verifyAuthToken, bulkCreate);
-  app.put('/products/:id', verifyAuthToken, update);
-  app.delete('/products/:id', verifyAuthToken, destroy);
+  app.get('/products',          verifyAuthToken, index);
+  app.get('/products/popular',  verifyAuthToken, mostPopular);
+  app.get('/products/:id',      verifyAuthToken, show);
+  app.post('/products',         verifyAuthToken, requireAdmin, create);
+  app.post('/products/bulk',    verifyAuthToken, requireAdmin, bulkCreate);
+  app.put('/products/:id',      verifyAuthToken, requireAdmin, update);
+  app.delete('/products/:id',   verifyAuthToken, requireAdmin, destroy);
 };
 
 export default productRoutes;

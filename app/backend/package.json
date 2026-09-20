@@ -12,7 +12,8 @@
     "test": "cross-env ENV=test npm run build && db-migrate --env test up && cross-env ENV=test jasmine && db-migrate --env test reset",
     "migrate:up": "db-migrate up",
     "migrate:down": "db-migrate down",
-    "migrate:reset": "db-migrate reset"
+    "migrate:reset": "db-migrate reset",
+    "seed:admin": "npm run build && node dist/scripts/seedAdmin.js"
   },
   "keywords": [
     "api",
