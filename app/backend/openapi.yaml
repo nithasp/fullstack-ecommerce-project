@@ -1,0 +1,2828 @@
+openapi: 3.0.3
+
+info:
+  title: Storefront API
+  version: 1.0.0
+  description: |
+    REST API for the storefront backend — accounts, catalog, cart, checkout, orders,
+    shipping addresses and an admin namespace.
+
+    ## Response envelope
+
+    Every route except `GET /` wraps its payload in the same envelope:
+
+    ```json
+    { "status": 200, "message": "Products fetched.", "data": [] }
+    ```
+
+    `status` repeats the HTTP status code and `data` is `null` on errors.
+
+    ## Authentication
+
+    All routes except `GET /`, `POST /auth/register`, `POST /auth/login`,
+    `POST /auth/refresh` and `POST /auth/logout` require an access token:
+
+    ```
+    Authorization: Bearer <accessToken>
+    ```
+
+    Access tokens are JWTs that expire after 15 minutes (`ACCESS_TOKEN_EXPIRY`) and carry
+    `userId` and `role` claims. Refresh tokens last 7 days and are rotated on every
+    `POST /auth/refresh` — the token you send is invalidated as soon as it is exchanged.
+
+    **Token rejections do not use the envelope.** The auth middleware answers with a
+    distinct code so a frontend can tell "refresh me" from "log in again":
+
+    ```json
+    { "error": "Access token has expired.", "code": "token_expired" }
+    ```
+
+    `code` is one of `no_token`, `token_expired` or `token_invalid`. A wrong username or
+    password, by contrast, is raised by the handler and *does* use the envelope.
+
+    ## Roles
+
+    Every account has a `role` of `customer` (default) or `admin`.
+
+    - Self-registration always creates a `customer`; a `role` in the register body is ignored.
+      Admins are made with `npm run seed:admin` or `PUT /admin/users/{id}/role`.
+    - Customers reach only their own user record, orders, cart and addresses. Another
+      user's id returns `403` (users, addresses) or `404` (orders — the existence of
+      someone else's order is never revealed).
+    - Admins bypass those ownership checks, may write to the catalog, and get the `/admin`
+      namespace. Admin routes re-read the role from the database on every request, so a
+      demoted admin loses access immediately rather than when their token expires.
+
+    ## Rate limits
+
+    - `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`: 20 requests per IP
+      per 15 minutes. Answers with the `error`/`code` shape (`code: "rate_limited"`).
+    - Every other route: `API_RATE_LIMIT` (default 500) requests per IP per 15 minutes.
+      Answers with the envelope: `{ "status": 429, "message": "Too many requests. Please
+      wait a moment and try again.", "data": null }`. This ceiling applies to every route
+      below and is not repeated on each one.
+
+    Both limiters send `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`
+    headers, and both are disabled when the server runs with `ENV=test`.
+
+    ## Errors
+
+    `5xx` responses are deliberately opaque — the server logs the real error and returns
+    `"Internal Server Error"` so stack traces, SQL and internal paths never reach a client.
+  contact:
+    name: Storefront API
+  license:
+    name: ISC
+    url: https://opensource.org/license/isc-license-txt
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Health
+    description: Liveness check.
+  - name: Auth
+    description: Registration, login, token refresh and session management.
+  - name: Users
+    description: |
+      Your own account. Listing and creating accounts is an admin function; get, update and
+      delete are limited to the token user unless the token belongs to an admin.
+  - name: Products
+    description: Catalog. Reads are open to any signed-in user; writes require an admin.
+  - name: Orders
+    description: Orders belonging to the token user (admins may reach any order).
+  - name: Cart
+    description: The token user's cart, and checkout.
+  - name: Addresses
+    description: The token user's shipping addresses.
+  - name: Admin · Users
+    description: Manage any account, including roles.
+  - name: Admin · Orders
+    description: Manage any user's orders and their line items.
+  - name: Admin · Carts
+    description: Inspect and manage any user's cart.
+  - name: Admin · Addresses
+    description: Manage any user's shipping addresses.
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+
+  /:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Confirms the API is up. The only route that does not use the response envelope.
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: The API is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Storefront API is running!
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register an account
+      description: |
+        Creates a `customer` account and signs it in. A `role` sent in the body is ignored —
+        self-registration can never create an admin.
+
+        `firstName` falls back to the username and `lastName` to an empty string when omitted.
+
+        Rate limited to 20 requests per IP per 15 minutes.
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 1
+                  example: johndoe
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: At least 8 characters.
+                  example: pass1234
+                firstName:
+                  type: string
+                  example: John
+                lastName:
+                  type: string
+                  example: Doe
+      responses:
+        '201':
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Account created successfully. }
+                      data: { $ref: '#/components/schemas/AuthSession' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: The username is already taken.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 409, message: Username already exists, data: null }
+        '429':
+          $ref: '#/components/responses/AuthRateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      description: |
+        Exchanges credentials for an access token and a refresh token.
+
+        Rate limited to 20 requests per IP per 15 minutes.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: johndoe }
+                password: { type: string, format: password, example: pass1234 }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: 'Login successful! Welcome back.' }
+                      data: { $ref: '#/components/schemas/AuthSession' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Wrong username or password. Uses the envelope, not the token-error shape.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 401, message: Invalid username or password, data: null }
+        '429':
+          $ref: '#/components/responses/AuthRateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh the access token
+      description: |
+        Rotates the pair: the refresh token you send is deleted and a new one is issued
+        alongside a fresh access token. Replaying the old token returns `401`.
+
+        The account is re-read from the database, so the new access token carries the
+        current role and a deleted account cannot refresh.
+
+        Rate limited to 20 requests per IP per 15 minutes.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: A new token pair.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Token refreshed successfully. }
+                      data:
+                        type: object
+                        properties:
+                          accessToken: { type: string }
+                          refreshToken: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: The refresh token is unknown, already used or expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 401, message: Invalid or expired refresh token, data: null }
+        '429':
+          $ref: '#/components/responses/AuthRateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out one session
+      description: |
+        Revokes the supplied refresh token. Always answers `200`, whether or not the token
+        existed, so a caller cannot probe which tokens are valid. No access token is required.
+      operationId: logout
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Session revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 200, message: Logged out successfully., data: null }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Log out every session
+      description: Revokes every refresh token belonging to the token user.
+      operationId: logoutAll
+      responses:
+        '200':
+          description: All sessions revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 200, message: All sessions revoked., data: null }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the signed-in account
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: The token user.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User fetched successfully. }
+                      data: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Users ───────────────────────────────────────────────────────────────────
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: |
+        **Admin only.** Returns every account, unpaginated. Use `GET /admin/users` for the
+        paginated equivalent.
+      operationId: listUsers
+      responses:
+        '200':
+          description: All accounts.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Users fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Users]
+      summary: Create a user
+      description: |
+        **Admin only.** Creates a `customer`; the role cannot be set here.
+
+        Unlike `POST /admin/users`, this route does not enforce the 8-character password
+        minimum and does not pre-check the username, so a duplicate username surfaces as a
+        `500` rather than a `409`. Prefer `POST /admin/users`.
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, username, password]
+              properties:
+                firstName: { type: string, example: John }
+                lastName: { type: string, example: Doe }
+                username: { type: string, example: johndoe }
+                password: { type: string, format: password, example: pass1234 }
+      responses:
+        '201':
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: User created. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Users]
+      summary: Get a user
+      description: |
+        Your own account only — another user's id returns `403`. Admins may read any account.
+
+        The payload adds `recentPurchases`: up to 5 line items from the user's most recent
+        completed orders.
+      operationId: getUser
+      responses:
+        '200':
+          description: The account, with recent purchases.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User fetched. }
+                      data: { $ref: '#/components/schemas/UserWithPurchases' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Users]
+      summary: Update a user
+      description: |
+        Your own account only — another user's id returns `403`. Admins may update any account.
+
+        At least one field is required. The role is deliberately not writable here; it has its
+        own route, `PUT /admin/users/{id}/role`.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Account updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User updated. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      description: |
+        Your own account only — another user's id returns `403`. Admins may delete any account.
+        Orders, cart items and addresses cascade.
+      operationId: deleteUser
+      responses:
+        '200':
+          description: Account deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User deleted. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Products ────────────────────────────────────────────────────────────────
+
+  /products:
+    get:
+      tags: [Products]
+      summary: List products
+      description: Returns the whole catalog, or one category when `category` is supplied.
+      operationId: listProducts
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: Case-insensitive exact category match.
+          schema: { type: string }
+          example: Electronics
+      responses:
+        '200':
+          description: Matching products.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Products fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Products]
+      summary: Create a product
+      description: '**Admin only.**'
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreate' }
+      responses:
+        '201':
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Product created. }
+                      data: { $ref: '#/components/schemas/Product' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /products/popular:
+    get:
+      tags: [Products]
+      summary: List the most popular products
+      description: |
+        The 5 products with the highest total quantity across all order line items.
+        Products that have never been ordered are included with a total of 0.
+      operationId: listPopularProducts
+      responses:
+        '200':
+          description: Up to 5 products, most ordered first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Most popular products fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /products/bulk:
+    post:
+      tags: [Products]
+      summary: Create products in bulk
+      description: |
+        **Admin only.** The request body is a JSON **array** of products, not an object.
+        Validation is all-or-nothing: one bad entry rejects the whole batch with a message
+        naming its index, e.g. `products[2].price is required and must be a valid number`.
+
+        The body is capped by `JSON_BODY_LIMIT` (default `1mb`); a larger payload returns
+        `413 Request body is too large`.
+      operationId: bulkCreateProducts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              items: { $ref: '#/components/schemas/ProductCreate' }
+      responses:
+        '201':
+          description: Products created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: 2 products created. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      summary: Get a product
+      operationId: getProduct
+      responses:
+        '200':
+          description: The product.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Product fetched. }
+                      data: { $ref: '#/components/schemas/Product' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Products]
+      summary: Update a product
+      description: '**Admin only.** At least one field is required.'
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdate' }
+      responses:
+        '200':
+          description: Product updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Product updated. }
+                      data: { $ref: '#/components/schemas/Product' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Products]
+      summary: Delete a product
+      description: |
+        **Admin only.** Cart items and order line items referencing the product cascade.
+      operationId: deleteProduct
+      responses:
+        '200':
+          description: Product deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Product deleted. }
+                      data: { $ref: '#/components/schemas/Product' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Orders ──────────────────────────────────────────────────────────────────
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List your orders
+      description: |
+        Always scoped to the token user. A `userId` filter naming anyone else returns `403`
+        (admins are exempt — but `GET /admin/orders` is the route meant for that).
+      operationId: listOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: userId
+          in: query
+          required: false
+          description: Only your own id, unless the token is an admin.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Matching orders.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Orders fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Orders]
+      summary: Create an order
+      description: |
+        Creates an empty order for the token user. `userId` may be sent but must be your own
+        id unless the token is an admin. Add line items with `POST /orders/{id}/products`, or
+        use `POST /cart/checkout` to do both in one transaction.
+      operationId: createOrder
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: integer
+                  minimum: 1
+                  description: Defaults to the token user.
+                status:
+                  allOf:
+                    - $ref: '#/components/schemas/OrderStatus'
+                  default: active
+      responses:
+        '201':
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Order created. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Orders]
+      summary: Get an order
+      description: |
+        Another user's order is reported as `404`, not `403`, so its existence is not revealed.
+      operationId: getOrder
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order fetched. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Orders]
+      summary: Update an order's status
+      operationId: updateOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order updated. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Orders]
+      summary: Delete an order
+      description: Line items cascade.
+      operationId: deleteOrder
+      responses:
+        '200':
+          description: Order deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order deleted. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/{id}/products:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Orders]
+      summary: List an order's line items
+      operationId: listOrderProducts
+      responses:
+        '200':
+          description: The order's line items.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order products fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrderProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Orders]
+      summary: Add a line item to an order
+      description: |
+        Note this returns `200`, not `201`.
+
+        Adding the same product twice creates a second line item rather than merging — the
+        merging behaviour lives in the cart (`POST /cart`).
+      operationId: addOrderProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: { type: integer, minimum: 1, example: 1 }
+                quantity: { type: integer, minimum: 1, example: 2 }
+      responses:
+        '200':
+          description: Line item added.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Product added to order. }
+                      data: { $ref: '#/components/schemas/OrderProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/user/{userId}/current:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      tags: [Orders]
+      summary: List a user's active orders
+      description: |
+        Your own id only — anyone else's returns `403` (admins are exempt).
+        Returns an array, which is empty when there is no active order.
+      operationId: listCurrentOrders
+      responses:
+        '200':
+          description: The user's active orders.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Current order fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/user/{userId}/completed:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      tags: [Orders]
+      summary: List a user's completed orders
+      description: Your own id only — anyone else's returns `403` (admins are exempt).
+      operationId: listCompletedOrders
+      responses:
+        '200':
+          description: The user's completed orders.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Completed orders fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Cart ────────────────────────────────────────────────────────────────────
+
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Get your cart
+      description: |
+        Cart items joined with their product, oldest first. Each item carries the `product*`
+        fields described in `CartItemWithProduct`.
+      operationId: getCart
+      responses:
+        '200':
+          description: The token user's cart.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CartItemWithProduct' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Cart]
+      summary: Add an item to your cart
+      description: |
+        Upsert on `(userId, productId, typeId)`: adding a product already in the cart **adds
+        to** the existing quantity rather than replacing it, and refreshes `selectedType`,
+        `shopId` and `shopName`.
+
+        The response is the bare cart item — the `product*` fields only appear on reads
+        (`GET /cart`).
+      operationId: addCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartItemUpsert' }
+      responses:
+        '201':
+          description: Item added or quantity increased.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Item added to cart. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Cart]
+      summary: Empty your cart
+      operationId: clearCart
+      responses:
+        '200':
+          description: Cart emptied. `data` is `null`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 200, message: Cart cleared., data: null }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cart/checkout:
+    post:
+      tags: [Cart]
+      summary: Check out
+      description: |
+        Creates an order from the supplied items, marks it `complete` and empties the cart —
+        all in one transaction, so a failure leaves neither a half-written order nor a
+        cleared cart.
+
+        The items come from the request body, not from the stored cart, so send what you
+        intend to buy.
+      operationId: checkout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [productId, quantity]
+                    properties:
+                      productId: { type: integer, minimum: 1, example: 1 }
+                      quantity: { type: integer, minimum: 1, example: 2 }
+      responses:
+        '201':
+          description: Order placed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Checkout successful. }
+                      data:
+                        type: object
+                        properties:
+                          order: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cart/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CartItemId'
+    put:
+      tags: [Cart]
+      summary: Set a cart item's quantity
+      description: |
+        Replaces the quantity (unlike `POST /cart`, which adds to it). Scoped to your own
+        cart — another user's item returns `404`.
+      operationId: updateCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: { type: integer, minimum: 1, example: 3 }
+      responses:
+        '200':
+          description: Quantity updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart item updated. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Cart]
+      summary: Remove a cart item
+      description: Scoped to your own cart — another user's item returns `404`.
+      operationId: removeCartItem
+      responses:
+        '200':
+          description: Item removed; the removed record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart item removed. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Addresses ───────────────────────────────────────────────────────────────
+
+  /addresses:
+    get:
+      tags: [Addresses]
+      summary: List your addresses
+      operationId: listAddresses
+      responses:
+        '200':
+          description: The token user's addresses.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Addresses fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Address' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Addresses]
+      summary: Add an address
+      description: |
+        Always created for the token user. Setting `isDefault: true` clears the flag on your
+        other addresses in the same transaction.
+
+        An unrecognised `label` falls back to `home` rather than erroring.
+      operationId: createAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressCreate' }
+      responses:
+        '201':
+          description: Address created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Address created. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /addresses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/AddressId'
+    get:
+      tags: [Addresses]
+      summary: Get an address
+      description: Scoped to your own addresses — another user's returns `404`.
+      operationId: getAddress
+      responses:
+        '200':
+          description: The address.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address fetched. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Addresses]
+      summary: Update an address
+      description: |
+        A partial update — only the fields you send are written. Sending `phone: null` (or an
+        empty string) clears the stored phone. Promoting an address with `isDefault: true`
+        demotes your others.
+
+        Scoped to your own addresses — another user's returns `404`.
+      operationId: updateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressUpdate' }
+      responses:
+        '200':
+          description: Address updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address updated. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Addresses]
+      summary: Delete an address
+      description: Scoped to your own addresses — another user's returns `404`.
+      operationId: deleteAddress
+      responses:
+        '200':
+          description: Address deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address deleted. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Admin · Users ───────────────────────────────────────────────────────────
+
+  /admin/users:
+    get:
+      tags: [Admin · Users]
+      summary: List users
+      description: Paginated. Unlike `GET /users`, the page size is bounded.
+      operationId: adminListUsers
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of accounts, lowest id first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Users fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Admin · Users]
+      summary: Create a user
+      description: |
+        The only route that can create an admin directly — pass `role: admin`.
+        Enforces the 8-character password minimum and rejects a duplicate username with `409`.
+      operationId: adminCreateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, username, password]
+              properties:
+                firstName: { type: string, example: Ada }
+                lastName: { type: string, example: Lovelace }
+                username: { type: string, example: ada }
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: analytical-engine
+                role:
+                  allOf:
+                    - $ref: '#/components/schemas/UserRole'
+                  default: customer
+      responses:
+        '201':
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: User created. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '409':
+          description: The username is already taken.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 409, message: Username already exists, data: null }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Admin · Users]
+      summary: Get any user
+      description: Includes `recentPurchases` — up to 5 line items from the user's completed orders.
+      operationId: adminGetUser
+      responses:
+        '200':
+          description: The account, with recent purchases.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User fetched. }
+                      data: { $ref: '#/components/schemas/UserWithPurchases' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Admin · Users]
+      summary: Update any user's profile
+      description: |
+        Profile fields only — at least one is required. The role has its own route so that
+        every privilege change is audited and revokes the user's sessions.
+      operationId: adminUpdateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+      responses:
+        '200':
+          description: Account updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User updated. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Admin · Users]
+      summary: Delete any user
+      description: |
+        You cannot delete your own account here — that returns `400`. Orders, cart items
+        and addresses cascade.
+      operationId: adminDeleteUser
+      responses:
+        '200':
+          description: Account deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User deleted. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Invalid id, or an attempt to delete your own account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example:
+                status: 400
+                message: You cannot delete your own account through the admin API
+                data: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}/role:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    put:
+      tags: [Admin · Users]
+      summary: Change a user's role
+      description: |
+        Promotes or demotes an account and revokes all of that user's refresh tokens, so the
+        old privilege cannot be renewed. Their current access token still works until it
+        expires (15 minutes), but `/admin` routes re-check the role in the database and will
+        already refuse it.
+
+        You cannot change your own role — that returns `400`, which keeps the last admin from
+        locking themselves out.
+      operationId: adminUpdateUserRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/UserRole' }
+      responses:
+        '200':
+          description: Role updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: User role updated. }
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Invalid id or role, or an attempt to change your own role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 400, message: You cannot change your own role, data: null }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Admin · Orders ──────────────────────────────────────────────────────────
+
+  /admin/orders:
+    get:
+      tags: [Admin · Orders]
+      summary: List all orders
+      description: Every user's orders, paginated and optionally filtered.
+      operationId: adminListOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: userId
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Orders fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Admin · Orders]
+      summary: Create an order for any user
+      description: '`userId` is required here and the account must exist.'
+      operationId: adminCreateOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId: { type: integer, minimum: 1, example: 2 }
+                status:
+                  allOf:
+                    - $ref: '#/components/schemas/OrderStatus'
+                  default: active
+      responses:
+        '201':
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Order created. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Admin · Orders]
+      summary: Get any order
+      operationId: adminGetOrder
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order fetched. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Admin · Orders]
+      summary: Update any order's status
+      operationId: adminUpdateOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order updated. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Admin · Orders]
+      summary: Delete any order
+      operationId: adminDeleteOrder
+      responses:
+        '200':
+          description: Order deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order deleted. }
+                      data: { $ref: '#/components/schemas/Order' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/orders/{id}/products:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Admin · Orders]
+      summary: List any order's line items
+      operationId: adminListOrderProducts
+      responses:
+        '200':
+          description: The order's line items.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Order products fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrderProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Admin · Orders]
+      summary: Add a line item to any order
+      description: Returns `200`, not `201`.
+      operationId: adminAddOrderProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: { type: integer, minimum: 1, example: 1 }
+                quantity: { type: integer, minimum: 1, example: 2 }
+      responses:
+        '200':
+          description: Line item added.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Product added to order. }
+                      data: { $ref: '#/components/schemas/OrderProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Admin · Carts ───────────────────────────────────────────────────────────
+
+  /admin/carts:
+    get:
+      tags: [Admin · Carts]
+      summary: List cart items across all users
+      description: Paginated, grouped by user, oldest item first within each user.
+      operationId: adminListCartItems
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Limit to one user's cart.
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of cart items, each joined with its product.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart items fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CartItemWithProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/carts/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      tags: [Admin · Carts]
+      summary: Get any user's cart
+      operationId: adminGetUserCart
+      responses:
+        '200':
+          description: That user's cart.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CartItemWithProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Admin · Carts]
+      summary: Add an item to any user's cart
+      description: Same upsert semantics as `POST /cart` — an existing item gains quantity.
+      operationId: adminAddUserCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartItemUpsert' }
+      responses:
+        '201':
+          description: Item added or quantity increased.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Item added to cart. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Admin · Carts]
+      summary: Empty any user's cart
+      operationId: adminClearUserCart
+      responses:
+        '200':
+          description: Cart emptied. `data` is `null`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 200, message: Cart cleared., data: null }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/cart-items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CartItemId'
+    get:
+      tags: [Admin · Carts]
+      summary: Get any cart item
+      operationId: adminGetCartItem
+      responses:
+        '200':
+          description: The cart item, joined with its product.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart item fetched. }
+                      data: { $ref: '#/components/schemas/CartItemWithProduct' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Admin · Carts]
+      summary: Set any cart item's quantity
+      operationId: adminUpdateCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: { type: integer, minimum: 1, example: 3 }
+      responses:
+        '200':
+          description: Quantity updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart item updated. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Admin · Carts]
+      summary: Remove any cart item
+      operationId: adminDeleteCartItem
+      responses:
+        '200':
+          description: Item removed; the removed record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Cart item removed. }
+                      data: { $ref: '#/components/schemas/CartItem' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Admin · Addresses ───────────────────────────────────────────────────────
+
+  /admin/addresses:
+    get:
+      tags: [Admin · Addresses]
+      summary: List addresses across all users
+      operationId: adminListAddresses
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Limit to one user's addresses.
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of addresses.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Addresses fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Admin · Addresses]
+      summary: Add an address for any user
+      description: '`userId` is required here and the account must exist.'
+      operationId: adminCreateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  required: [userId]
+                  properties:
+                    userId: { type: integer, minimum: 1, example: 2 }
+                - $ref: '#/components/schemas/AddressCreate'
+      responses:
+        '201':
+          description: Address created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Address created. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/addresses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/AddressId'
+    get:
+      tags: [Admin · Addresses]
+      summary: Get any address
+      operationId: adminGetAddress
+      responses:
+        '200':
+          description: The address.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address fetched. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Admin · Addresses]
+      summary: Update any address
+      description: |
+        A partial update — at least one field is required. The owner is read from the address
+        itself, so `isDefault: true` demotes the other addresses of *that* user.
+      operationId: adminUpdateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressUpdate' }
+      responses:
+        '200':
+          description: Address updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address updated. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Admin · Addresses]
+      summary: Delete any address
+      operationId: adminDeleteAddress
+      responses:
+        '200':
+          description: Address deleted; the deleted record is returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Address deleted. }
+                      data: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        The `accessToken` from `POST /auth/register`, `POST /auth/login` or
+        `POST /auth/refresh`, sent as `Authorization: Bearer <accessToken>`.
+        Expires after 15 minutes by default.
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: User id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      description: User id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: Product id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    OrderId:
+      name: id
+      in: path
+      required: true
+      description: Order id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    CartItemId:
+      name: id
+      in: path
+      required: true
+      description: Cart item id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    AddressId:
+      name: id
+      in: path
+      required: true
+      description: Address id.
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Bounded so one request cannot pull a whole table.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Rows to skip.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  schemas:
+
+    Envelope:
+      type: object
+      description: |
+        The shape every route except `GET /` returns. `status` repeats the HTTP status code;
+        `data` is `null` on errors.
+      required: [status, message, data]
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Products fetched.
+        data:
+          description: |
+            The payload, or `null`. Left untyped because it varies by route — an object,
+            an array, or `null`."
+
+    TokenError:
+      type: object
+      description: |
+        Returned by the auth middleware instead of the envelope, so a frontend can tell a
+        recoverable expiry from a dead session.
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          example: Access token has expired.
+        code:
+          type: string
+          enum: [no_token, token_expired, token_invalid]
+          example: token_expired
+
+    RateLimitError:
+      type: object
+      description: |
+        Returned by the auth-route limiter. Same `error`/`code` shape as `TokenError`, but a
+        different code — the global limiter, by contrast, answers with the envelope.
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          example: Too many requests. Please wait a moment and try again.
+        code:
+          type: string
+          enum: [rate_limited]
+
+    UserRole:
+      type: string
+      enum: [customer, admin]
+      default: customer
+
+    OrderStatus:
+      type: string
+      enum: [active, complete]
+
+    AddressLabel:
+      type: string
+      enum: [home, work, other]
+      default: home
+
+    User:
+      type: object
+      description: |
+        An account. The password hash is never selected from the database, so no password
+        field is ever returned.
+      properties:
+        id: { type: integer, example: 1 }
+        firstName: { type: string, example: John }
+        lastName: { type: string, example: Doe }
+        username: { type: string, example: johndoe }
+        role: { $ref: '#/components/schemas/UserRole' }
+
+    UserWithPurchases:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            recentPurchases:
+              type: array
+              description: Up to 5 line items from the user's most recent completed orders.
+              items: { $ref: '#/components/schemas/RecentPurchase' }
+
+    UserUpdate:
+      type: object
+      description: At least one property is required.
+      minProperties: 1
+      properties:
+        firstName: { type: string, example: Jane }
+        lastName: { type: string, example: Doe }
+        username: { type: string, example: janedoe }
+        password: { type: string, format: password }
+
+    RecentPurchase:
+      type: object
+      properties:
+        productId: { type: integer, example: 1 }
+        name: { type: string, example: Keyboard }
+        price:
+          type: string
+          description: |
+            `NUMERIC(10,2)`, returned by the driver as a string to preserve precision.
+          example: '49.99'
+        category: { type: string, nullable: true, example: Electronics }
+        image: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: integer, example: 2 }
+        orderId: { type: integer, example: 7 }
+
+    AuthSession:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        accessToken:
+          type: string
+          description: JWT, valid for 15 minutes by default.
+        refreshToken:
+          type: string
+          description: Opaque token, valid for 7 days, rotated on every refresh.
+
+    ProductType:
+      type: object
+      description: A purchasable variant of a product, such as a colourway.
+      properties:
+        _id: { type: string }
+        productId: { type: integer }
+        color: { type: string, example: Black }
+        quantity: { type: integer }
+        price: { type: number, format: float, example: 49.99 }
+        stock: { type: integer, example: 12 }
+        image: { type: string }
+
+    Review:
+      type: object
+      properties:
+        _id: { type: string }
+        star: { type: number, example: 5 }
+        comment: { type: string, example: Works great. }
+        userId: { type: string }
+        userName: { type: string, example: johndoe }
+        date: { type: string, example: '2026-05-01' }
+
+    Product:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Keyboard }
+        price:
+          type: string
+          description: |
+            `NUMERIC(10,2)`, returned by the driver as a string to preserve precision —
+            parse it client-side before doing arithmetic.
+          example: '49.99'
+        category: { type: string, nullable: true, example: Electronics }
+        image: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        previewImg:
+          type: array
+          items: { type: string }
+        types:
+          type: array
+          items: { $ref: '#/components/schemas/ProductType' }
+        reviews:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        overallRating:
+          type: number
+          format: float
+          nullable: true
+          description: Omitted when 0 or unset.
+          example: 4.5
+        stock: { type: integer, example: 25 }
+        isActive: { type: boolean, default: true }
+        shopId: { type: string, nullable: true }
+        shopName: { type: string, nullable: true }
+
+    ProductCreate:
+      type: object
+      required: [name, price]
+      properties:
+        name: { type: string, minLength: 1, example: Keyboard }
+        price:
+          type: number
+          format: float
+          minimum: 0
+          example: 49.99
+        category: { type: string, example: Electronics }
+        image: { type: string }
+        description: { type: string }
+        previewImg:
+          type: array
+          items: { type: string }
+        types:
+          type: array
+          items: { $ref: '#/components/schemas/ProductType' }
+        reviews:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        overallRating: { type: number, format: float, example: 4.5 }
+        stock: { type: integer, example: 25 }
+        isActive: { type: boolean, default: true }
+        shopId: { type: string }
+        shopName: { type: string }
+
+    ProductUpdate:
+      type: object
+      description: At least one property is required.
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1 }
+        price: { type: number, format: float, minimum: 0 }
+        category: { type: string }
+        image: { type: string }
+        description: { type: string }
+        previewImg:
+          type: array
+          items: { type: string }
+        types:
+          type: array
+          items: { $ref: '#/components/schemas/ProductType' }
+        reviews:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        overallRating: { type: number, format: float }
+        stock: { type: integer }
+        isActive: { type: boolean }
+        shopId: { type: string }
+        shopName: { type: string }
+
+    Order:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        userId: { type: integer, example: 1 }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+
+    OrderProduct:
+      type: object
+      description: One line item on an order.
+      properties:
+        id: { type: integer, example: 1 }
+        orderId: { type: integer, example: 1 }
+        productId: { type: integer, example: 1 }
+        quantity: { type: integer, example: 2 }
+
+    CartItem:
+      type: object
+      description: |
+        A cart item as returned by writes. Reads add the joined `product*` fields — see
+        `CartItemWithProduct`.
+      properties:
+        id: { type: integer, example: 1 }
+        userId: { type: integer, example: 1 }
+        productId: { type: integer, example: 1 }
+        quantity: { type: integer, example: 2 }
+        typeId:
+          type: string
+          description: |
+            Variant key. Empty string when the product has no variants; part of the
+            uniqueness constraint, so two variants of one product are separate cart items.
+          example: ''
+        selectedType:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ProductType'
+        shopId: { type: string, nullable: true }
+        shopName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CartItemWithProduct:
+      allOf:
+        - $ref: '#/components/schemas/CartItem'
+        - type: object
+          description: The joined product columns, present only on reads.
+          properties:
+            productName: { type: string, example: Keyboard }
+            productPrice: { type: string, example: '49.99' }
+            productCategory: { type: string, nullable: true }
+            productImage: { type: string, nullable: true }
+            productDescription: { type: string, nullable: true }
+            productPreviewImg:
+              type: array
+              items: { type: string }
+            productTypes:
+              type: array
+              items: { $ref: '#/components/schemas/ProductType' }
+            productReviews:
+              type: array
+              items: { $ref: '#/components/schemas/Review' }
+            productOverallRating: { type: string, nullable: true, example: '4.5' }
+            productStock: { type: integer }
+            productIsActive: { type: boolean }
+            productShopId: { type: string, nullable: true }
+            productShopName: { type: string, nullable: true }
+
+    CartItemUpsert:
+      type: object
+      required: [productId]
+      properties:
+        productId: { type: integer, minimum: 1, example: 1 }
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Added to the existing quantity when the item is already in the cart.
+          example: 2
+        typeId:
+          type: string
+          description: Variant key. Defaults to an empty string.
+          example: ''
+        selectedType:
+          type: object
+          nullable: true
+          description: The chosen variant, stored as-is.
+        shopId: { type: string, nullable: true }
+        shopName: { type: string, nullable: true }
+
+    Address:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        userId: { type: integer, example: 1 }
+        fullName: { type: string, example: John Doe }
+        phone: { type: string, nullable: true, example: '+62 812 3456 7890' }
+        address: { type: string, example: 12 Market Street }
+        city: { type: string, example: Jakarta }
+        label: { $ref: '#/components/schemas/AddressLabel' }
+        isDefault: { type: boolean, example: false }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AddressCreate:
+      type: object
+      required: [fullName, address, city]
+      properties:
+        fullName: { type: string, minLength: 1, example: John Doe }
+        address: { type: string, minLength: 1, example: 12 Market Street }
+        city: { type: string, minLength: 1, example: Jakarta }
+        phone: { type: string, example: '+62 812 3456 7890' }
+        label:
+          allOf:
+            - $ref: '#/components/schemas/AddressLabel'
+          description: An unrecognised value falls back to `home`.
+        isDefault:
+          type: boolean
+          default: false
+          description: |
+            When true, the flag is cleared on the user's other addresses.
+            Accepts the string `"true"` as well as the boolean.
+
+    AddressUpdate:
+      type: object
+      description: At least one property is required. Only the properties you send are written.
+      minProperties: 1
+      properties:
+        fullName: { type: string, minLength: 1 }
+        address: { type: string, minLength: 1 }
+        city: { type: string, minLength: 1 }
+        phone:
+          type: string
+          nullable: true
+          description: '`null` or an empty string clears the stored phone.'
+        label: { $ref: '#/components/schemas/AddressLabel' }
+        isDefault: { type: boolean }
+
+  responses:
+
+    BadRequest:
+      description: |
+        Validation failed. `message` names the offending field, e.g.
+        `price must be a non-negative number` or `user id must be a valid positive integer`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example:
+            status: 400
+            message: name is required and must be a non-empty string
+            data: null
+
+    Unauthorized:
+      description: |
+        The access token is missing, expired or invalid. Note this uses the `TokenError`
+        shape, not the envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TokenError' }
+          examples:
+            missing:
+              summary: No Authorization header
+              value: { error: Access denied. No token provided., code: no_token }
+            expired:
+              summary: Expired — refresh and retry
+              value: { error: Access token has expired., code: token_expired }
+            invalid:
+              summary: Malformed or wrongly signed
+              value: { error: Invalid token., code: token_invalid }
+
+    Forbidden:
+      description: The token is valid but the record belongs to another user.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 403, message: You can only access your own data, data: null }
+
+    AdminRequired:
+      description: |
+        The token is valid but the account is not an admin. The role is read from the
+        database on every request, so a just-demoted admin is refused immediately.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 403, message: Admin access required, data: null }
+
+    NotFound:
+      description: No such record.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 404, message: product with id 99 not found, data: null }
+
+    NotFoundOrNotYours:
+      description: |
+        No such record — **or** it belongs to another user. The two cases are deliberately
+        indistinguishable so the API does not confirm that someone else's record exists.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 404, message: order with id 99 not found, data: null }
+
+    PayloadTooLarge:
+      description: The JSON body exceeded `JSON_BODY_LIMIT` (default `1mb`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 413, message: Request body is too large, data: null }
+
+    AuthRateLimited:
+      description: |
+        More than 20 requests to `/auth/register`, `/auth/login` or `/auth/refresh` from one
+        IP in 15 minutes. This limiter answers with `error`/`code`, unlike the global limiter,
+        which uses the envelope.
+      headers:
+        RateLimit-Limit:
+          schema: { type: integer }
+          description: Requests allowed in the window.
+        RateLimit-Remaining:
+          schema: { type: integer }
+          description: Requests left in the window.
+        RateLimit-Reset:
+          schema: { type: integer }
+          description: Seconds until the window resets.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RateLimitError' }
+          example:
+            error: Too many requests. Please wait a moment and try again.
+            code: rate_limited
+
+    InternalError:
+      description: |
+        Something failed server-side. The real error is logged; the response is deliberately
+        opaque so stack traces, SQL and internal paths never reach a client.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+          example: { status: 500, message: Internal Server Error, data: null }

@@ -9,6 +9,7 @@ import orderRoutes from './handlers/orders';
 import cartRoutes from './handlers/cart';
 import addressRoutes from './handlers/addresses';
 import adminRoutes from './handlers/admin';
+import docsRoutes from './handlers/docs';
 import { errorMiddleware } from './utils/response';
 import { config } from './config';
 
@@ -55,6 +56,7 @@ orderRoutes(app);
 cartRoutes(app);
 addressRoutes(app);
 adminRoutes(app);
+docsRoutes(app);
 
 app.use(errorMiddleware);
 

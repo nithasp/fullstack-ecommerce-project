@@ -76,6 +76,26 @@ npm test
 
 ---
 
+## API Reference
+
+The full API is described by [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0.3, all 64 routes).
+With the server running, browse it as Swagger UI:
+
+| URL                              | What it is                                  |
+| -------------------------------- | ------------------------------------------- |
+| `http://localhost:3000/docs`     | Swagger UI — browse and call every endpoint |
+| `http://localhost:3000/openapi.yaml` | The raw spec                            |
+
+Click **Authorize** and paste an `accessToken` to use "Try it out" on authenticated routes.
+
+The spec file also imports into Postman, Insomnia or an API client of your choice, and
+generates typed clients via `openapi-generator` / `openapi-typescript`.
+
+Both doc routes are public. To take them off a deployed instance, drop the `docsRoutes(app)`
+call in [`src/server.ts`](src/server.ts).
+
+---
+
 ## API Routes
 
 | Group      | Base Path     | Auth Required            |
@@ -118,3 +138,13 @@ See [API_TESTING.md](API_TESTING.md) for full cURL examples and [SECURITY.md](SE
 | `npm run migrate:down`   | Rollback last migration     |
 | `npm run migrate:reset`  | Reset all migrations        |
 | `npm run seed:admin`     | Create/promote the admin account from `ADMIN_USERNAME` / `ADMIN_PASSWORD` |
+
+## Documentation
+
+| File                                 | Contents                                    |
+| ------------------------------------ | ------------------------------------------- |
+| [openapi.yaml](openapi.yaml)         | OpenAPI 3.0.3 spec — every route, schema and error |
+| [API_TESTING.md](API_TESTING.md)     | cURL examples for each endpoint             |
+| [SECURITY.md](SECURITY.md)           | How the API maps to the OWASP API Top 10    |
+| [DOCKER_GUIDE.md](DOCKER_GUIDE.md)   | Running the stack in Docker                 |
+| [REQUIREMENTS.md](REQUIREMENTS.md)   | Original project requirements               |

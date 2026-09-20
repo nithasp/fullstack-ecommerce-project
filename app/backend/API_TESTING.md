@@ -3,6 +3,9 @@
 > Base URL: `http://localhost:3000` — run `npm run watch` first.
 >
 > Prefer Postman? Import [`postman/storefront-api.postman_collection.json`](postman/storefront-api.postman_collection.json) — it covers every route below and saves tokens and ids automatically.
+>
+> Prefer a browser? With the server running, open **http://localhost:3000/docs** for Swagger UI,
+> backed by [`openapi.yaml`](openapi.yaml) — the same routes, callable from the page.
 
 All responses use the shape `{ "status": <code>, "message": "...", "data": ... }`.
 
