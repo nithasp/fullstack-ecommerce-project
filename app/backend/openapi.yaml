@@ -7,6 +7,12 @@ info:
     REST API for the storefront backend — accounts, catalog, cart, checkout, orders,
     shipping addresses and an admin namespace.
 
+    ## Base path
+
+    Every API route is served under `/api/v1`, e.g. `POST /api/v1/auth/login`. The prose
+    below leaves the prefix out. Only `GET /` (health check), `GET /docs` and
+    `GET /openapi.yaml` sit at the server root.
+
     ## Response envelope
 
     Every route except `GET /` wraps its payload in the same envelope:
@@ -17,6 +23,15 @@ info:
 
     `status` repeats the HTTP status code and `data` is `null` on errors.
 
+    ## Pagination
+
+    Lists that can grow — products, users, orders and the admin lists — take `limit`
+    (1–100, default 50) and `offset` (default 0), and add a `meta` object next to `data`:
+
+    ```json
+    { "status": 200, "message": "Products fetched.", "data": [], "meta": { "limit": 50, "offset": 0, "total": 134 } }
+    ```
+
     ## Authentication
 
     All routes except `GET /`, `POST /auth/register`, `POST /auth/login`,
@@ -26,9 +41,11 @@ info:
     Authorization: Bearer <accessToken>
     ```
 
-    Access tokens are JWTs that expire after 15 minutes (`ACCESS_TOKEN_EXPIRY`) and carry
-    `userId` and `role` claims. Refresh tokens last 7 days and are rotated on every
-    `POST /auth/refresh` — the token you send is invalidated as soon as it is exchanged.
+    Access tokens are HS256-signed JWTs (a token signed with any other algorithm is
+    rejected) that expire after 15 minutes (`ACCESS_TOKEN_EXPIRY`) and carry `userId` and
+    `role` claims. Refresh tokens last 7 days and are rotated on every `POST /auth/refresh` —
+    the token you send is invalidated as soon as it is exchanged, and sending it again later
+    revokes that whole session.
 
     **Token rejections do not use the envelope.** The auth middleware answers with a
     distinct code so a frontend can tell "refresh me" from "log in again":
@@ -69,6 +86,15 @@ info:
 
     `5xx` responses are deliberately opaque — the server logs the real error and returns
     `"Internal Server Error"` so stack traces, SQL and internal paths never reach a client.
+
+    A value the database rejects is the client's mistake, not a server failure: a taken
+    username is `409 Username already exists`, an id that points at nothing (an unknown
+    `productId` in a cart, order or checkout) is `400 Product does not exist`, and a value
+    too long or too large for its column is `400`. An unknown path answers `404` with the
+    envelope.
+
+    Every route that sets a password requires at least 8 characters and stores it exactly
+    as sent — surrounding spaces are not trimmed.
   contact:
     name: Storefront API
   license:
@@ -133,7 +159,7 @@ paths:
 
   # ── Auth ────────────────────────────────────────────────────────────────────
 
-  /auth/register:
+  /api/v1/auth/register:
     post:
       tags: [Auth]
       summary: Register an account
@@ -196,7 +222,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /auth/login:
+  /api/v1/auth/login:
     post:
       tags: [Auth]
       summary: Log in
@@ -241,13 +267,18 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /auth/refresh:
+  /api/v1/auth/refresh:
     post:
       tags: [Auth]
       summary: Refresh the access token
       description: |
-        Rotates the pair: the refresh token you send is deleted and a new one is issued
-        alongside a fresh access token. Replaying the old token returns `401`.
+        Rotates the pair: the refresh token you send is marked used and a new one is issued
+        alongside a fresh access token. When two requests race with the same token, exactly
+        one succeeds.
+
+        Replaying a token that was already exchanged returns `401` **and revokes every token
+        issued from the same login**, its successor included: a replay means the token was
+        copied, so whoever holds the copy is cut off. The user's other sessions are unaffected.
 
         The account is re-read from the database, so the new access token carries the
         current role and a deleted account cannot refresh.
@@ -293,12 +324,13 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /auth/logout:
+  /api/v1/auth/logout:
     post:
       tags: [Auth]
       summary: Log out one session
       description: |
-        Revokes the supplied refresh token. Always answers `200`, whether or not the token
+        Ends the session the supplied refresh token belongs to, including tokens already
+        rotated out of it. Always answers `200`, whether or not the token
         existed, so a caller cannot probe which tokens are valid. No access token is required.
       operationId: logout
       security: []
@@ -320,7 +352,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /auth/logout-all:
+  /api/v1/auth/logout-all:
     post:
       tags: [Auth]
       summary: Log out every session
@@ -338,7 +370,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /auth/me:
+  /api/v1/auth/me:
     get:
       tags: [Auth]
       summary: Get the signed-in account
@@ -364,17 +396,18 @@ paths:
 
   # ── Users ───────────────────────────────────────────────────────────────────
 
-  /users:
+  /api/v1/users:
     get:
       tags: [Users]
-      summary: List all users
-      description: |
-        **Admin only.** Returns every account, unpaginated. Use `GET /admin/users` for the
-        paginated equivalent.
+      summary: List users
+      description: '**Admin only.** Paginated, lowest id first — the same list as `GET /admin/users`.'
       operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: All accounts.
+          description: A page of accounts.
           content:
             application/json:
               schema:
@@ -386,6 +419,9 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/User' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -396,11 +432,8 @@ paths:
       tags: [Users]
       summary: Create a user
       description: |
-        **Admin only.** Creates a `customer`; the role cannot be set here.
-
-        Unlike `POST /admin/users`, this route does not enforce the 8-character password
-        minimum and does not pre-check the username, so a duplicate username surfaces as a
-        `500` rather than a `409`. Prefer `POST /admin/users`.
+        **Admin only.** Creates a `customer`; the role cannot be set here (`POST /admin/users`
+        can). The password must be at least 8 characters, and a taken username returns `409`.
       operationId: createUser
       requestBody:
         required: true
@@ -413,7 +446,7 @@ paths:
                 firstName: { type: string, example: John }
                 lastName: { type: string, example: Doe }
                 username: { type: string, example: johndoe }
-                password: { type: string, format: password, example: pass1234 }
+                password: { type: string, format: password, minLength: 8, example: pass1234 }
       responses:
         '201':
           description: Account created.
@@ -433,10 +466,16 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/AdminRequired'
+        '409':
+          description: The username is taken.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 409, message: Username already exists, data: null }
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /users/{id}:
+  /api/v1/users/{id}:
     parameters:
       - $ref: '#/components/parameters/UserId'
     get:
@@ -477,7 +516,8 @@ paths:
         Your own account only — another user's id returns `403`. Admins may update any account.
 
         At least one field is required. The role is deliberately not writable here; it has its
-        own route, `PUT /admin/users/{id}/role`.
+        own route, `PUT /admin/users/{id}/role`. A new password must be at least 8 characters;
+        a username that is already taken returns `409`.
       operationId: updateUser
       requestBody:
         required: true
@@ -505,6 +545,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: The new username is taken.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example: { status: 409, message: Username already exists, data: null }
         '500':
           $ref: '#/components/responses/InternalError'
     delete:
@@ -539,22 +585,34 @@ paths:
 
   # ── Products ────────────────────────────────────────────────────────────────
 
-  /products:
+  /api/v1/products:
     get:
       tags: [Products]
       summary: List products
-      description: Returns the whole catalog, or one category when `category` is supplied.
+      description: |
+        One page of the catalog, lowest id first, optionally narrowed by `category` and/or
+        `search`. `meta.total` counts every match, so a client can keep paging with `offset`.
       operationId: listProducts
       parameters:
         - name: category
           in: query
           required: false
-          description: Case-insensitive exact category match.
-          schema: { type: string }
+          description: Case-insensitive exact category match. At most 100 characters.
+          schema: { type: string, maxLength: 100 }
           example: Electronics
+        - name: search
+          in: query
+          required: false
+          description: |
+            Case-insensitive substring of the name or description. `%` and `_` match
+            themselves rather than acting as wildcards. At most 100 characters.
+          schema: { type: string, maxLength: 100 }
+          example: wireless
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Matching products.
+          description: A page of matching products.
           content:
             application/json:
               schema:
@@ -566,6 +624,9 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Product' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -602,7 +663,35 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /products/popular:
+  /api/v1/products/categories:
+    get:
+      tags: [Products]
+      summary: List every category
+      description: |
+        Each distinct non-empty category in the catalog, sorted. Lets a client offer every
+        category filter without loading the whole catalog.
+      operationId: listProductCategories
+      responses:
+        '200':
+          description: Category names.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Categories fetched. }
+                      data:
+                        type: array
+                        items: { type: string }
+                        example: [Books, Electronics, Furniture]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/products/popular:
     get:
       tags: [Products]
       summary: List the most popular products
@@ -629,7 +718,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /products/bulk:
+  /api/v1/products/bulk:
     post:
       tags: [Products]
       summary: Create products in bulk
@@ -637,6 +726,8 @@ paths:
         **Admin only.** The request body is a JSON **array** of products, not an object.
         Validation is all-or-nothing: one bad entry rejects the whole batch with a message
         naming its index, e.g. `products[2].price is required and must be a valid number`.
+        Saving is all-or-nothing too: the batch is inserted in one transaction, so if the
+        database rejects any product (a value too long or out of range), none are saved.
 
         The body is capped by `JSON_BODY_LIMIT` (default `1mb`); a larger payload returns
         `413 Request body is too large`.
@@ -675,7 +766,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /products/{id}:
+  /api/v1/products/{id}:
     parameters:
       - $ref: '#/components/parameters/ProductId'
     get:
@@ -765,13 +856,14 @@ paths:
 
   # ── Orders ──────────────────────────────────────────────────────────────────
 
-  /orders:
+  /api/v1/orders:
     get:
       tags: [Orders]
       summary: List your orders
       description: |
         Always scoped to the token user. A `userId` filter naming anyone else returns `403`
         (admins are exempt — but `GET /admin/orders` is the route meant for that).
+        Paginated, lowest id first.
       operationId: listOrders
       parameters:
         - name: status
@@ -783,9 +875,11 @@ paths:
           required: false
           description: Only your own id, unless the token is an admin.
           schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Matching orders.
+          description: A page of matching orders.
           content:
             application/json:
               schema:
@@ -797,6 +891,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Order' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -850,7 +945,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /orders/{id}:
+  /api/v1/orders/{id}:
     parameters:
       - $ref: '#/components/parameters/OrderId'
     get:
@@ -938,7 +1033,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /orders/{id}/products:
+  /api/v1/orders/{id}/products:
     parameters:
       - $ref: '#/components/parameters/OrderId'
     get:
@@ -974,7 +1069,8 @@ paths:
         Note this returns `200`, not `201`.
 
         Adding the same product twice creates a second line item rather than merging — the
-        merging behaviour lives in the cart (`POST /cart`).
+        merging behaviour lives in the cart (`POST /cart`). An unknown `productId` returns
+        `400 Product does not exist`.
       operationId: addOrderProduct
       requestBody:
         required: true
@@ -1007,7 +1103,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /orders/user/{userId}/current:
+  /api/v1/orders/user/{userId}/current:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
@@ -1015,8 +1111,11 @@ paths:
       summary: List a user's active orders
       description: |
         Your own id only — anyone else's returns `403` (admins are exempt).
-        Returns an array, which is empty when there is no active order.
+        Returns a paginated array, which is empty when there is no active order.
       operationId: listCurrentOrders
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
           description: The user's active orders.
@@ -1031,6 +1130,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Order' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1040,14 +1140,17 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /orders/user/{userId}/completed:
+  /api/v1/orders/user/{userId}/completed:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
       tags: [Orders]
       summary: List a user's completed orders
-      description: Your own id only — anyone else's returns `403` (admins are exempt).
+      description: Your own id only — anyone else's returns `403` (admins are exempt). Paginated.
       operationId: listCompletedOrders
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
           description: The user's completed orders.
@@ -1062,6 +1165,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Order' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1073,7 +1177,7 @@ paths:
 
   # ── Cart ────────────────────────────────────────────────────────────────────
 
-  /cart:
+  /api/v1/cart:
     get:
       tags: [Cart]
       summary: Get your cart
@@ -1108,7 +1212,7 @@ paths:
         `shopId` and `shopName`.
 
         The response is the bare cart item — the `product*` fields only appear on reads
-        (`GET /cart`).
+        (`GET /cart`). An unknown `productId` returns `400 Product does not exist`.
       operationId: addCartItem
       requestBody:
         required: true
@@ -1150,7 +1254,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /cart/checkout:
+  /api/v1/cart/checkout:
     post:
       tags: [Cart]
       summary: Check out
@@ -1160,7 +1264,8 @@ paths:
         cleared cart.
 
         The items come from the request body, not from the stored cart, so send what you
-        intend to buy.
+        intend to buy. An unknown `productId` returns `400 Product does not exist` and leaves
+        the cart as it was.
       operationId: checkout
       requestBody:
         required: true
@@ -1202,7 +1307,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /cart/{id}:
+  /api/v1/cart/{id}:
     parameters:
       - $ref: '#/components/parameters/CartItemId'
     put:
@@ -1269,7 +1374,7 @@ paths:
 
   # ── Addresses ───────────────────────────────────────────────────────────────
 
-  /addresses:
+  /api/v1/addresses:
     get:
       tags: [Addresses]
       summary: List your addresses
@@ -1326,7 +1431,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /addresses/{id}:
+  /api/v1/addresses/{id}:
     parameters:
       - $ref: '#/components/parameters/AddressId'
     get:
@@ -1417,11 +1522,11 @@ paths:
 
   # ── Admin · Users ───────────────────────────────────────────────────────────
 
-  /admin/users:
+  /api/v1/admin/users:
     get:
       tags: [Admin · Users]
       summary: List users
-      description: Paginated. Unlike `GET /users`, the page size is bounded.
+      description: Paginated, lowest id first.
       operationId: adminListUsers
       parameters:
         - $ref: '#/components/parameters/Limit'
@@ -1440,6 +1545,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/User' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1503,7 +1609,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/users/{id}:
+  /api/v1/admin/users/{id}:
     parameters:
       - $ref: '#/components/parameters/UserId'
     get:
@@ -1538,7 +1644,8 @@ paths:
       summary: Update any user's profile
       description: |
         Profile fields only — at least one is required. The role has its own route so that
-        every privilege change is audited and revokes the user's sessions.
+        every privilege change is audited and revokes the user's sessions. A new password
+        must be at least 8 characters; a taken username returns `409`.
       operationId: adminUpdateUser
       requestBody:
         required: true
@@ -1604,7 +1711,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/users/{id}/role:
+  /api/v1/admin/users/{id}/role:
     parameters:
       - $ref: '#/components/parameters/UserId'
     put:
@@ -1657,7 +1764,7 @@ paths:
 
   # ── Admin · Orders ──────────────────────────────────────────────────────────
 
-  /admin/orders:
+  /api/v1/admin/orders:
     get:
       tags: [Admin · Orders]
       summary: List all orders
@@ -1688,6 +1795,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Order' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1738,7 +1846,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/orders/{id}:
+  /api/v1/admin/orders/{id}:
     parameters:
       - $ref: '#/components/parameters/OrderId'
     get:
@@ -1829,7 +1937,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/orders/{id}/products:
+  /api/v1/admin/orders/{id}/products:
     parameters:
       - $ref: '#/components/parameters/OrderId'
     get:
@@ -1900,7 +2008,7 @@ paths:
 
   # ── Admin · Carts ───────────────────────────────────────────────────────────
 
-  /admin/carts:
+  /api/v1/admin/carts:
     get:
       tags: [Admin · Carts]
       summary: List cart items across all users
@@ -1928,6 +2036,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/CartItemWithProduct' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1937,7 +2046,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/carts/{userId}:
+  /api/v1/admin/carts/{userId}:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
@@ -2023,7 +2132,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/cart-items/{id}:
+  /api/v1/admin/cart-items/{id}:
     parameters:
       - $ref: '#/components/parameters/CartItemId'
     get:
@@ -2116,7 +2225,7 @@ paths:
 
   # ── Admin · Addresses ───────────────────────────────────────────────────────
 
-  /admin/addresses:
+  /api/v1/admin/addresses:
     get:
       tags: [Admin · Addresses]
       summary: List addresses across all users
@@ -2143,6 +2252,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Address' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2191,7 +2301,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /admin/addresses/{id}:
+  /api/v1/admin/addresses/{id}:
     parameters:
       - $ref: '#/components/parameters/AddressId'
     get:
@@ -2376,6 +2486,17 @@ components:
             The payload, or `null`. Left untyped because it varies by route — an object,
             an array, or `null`."
 
+    PageMeta:
+      type: object
+      description: |
+        Sent next to `data` on every paginated list. `total` counts all matching rows, so
+        there are more pages while `offset + data.length < total`.
+      required: [limit, offset, total]
+      properties:
+        limit: { type: integer, example: 50 }
+        offset: { type: integer, example: 0 }
+        total: { type: integer, example: 134 }
+
     TokenError:
       type: object
       description: |
@@ -2449,7 +2570,11 @@ components:
         firstName: { type: string, example: Jane }
         lastName: { type: string, example: Doe }
         username: { type: string, example: janedoe }
-        password: { type: string, format: password }
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Stored exactly as sent; surrounding spaces are not trimmed.
 
     RecentPurchase:
       type: object

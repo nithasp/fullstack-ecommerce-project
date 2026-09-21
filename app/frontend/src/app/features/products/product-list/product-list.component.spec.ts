@@ -1,10 +1,10 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { FormsModule } from '@angular/forms';
 import { RouterTestingModule } from '@angular/router/testing';
 import { ToastrModule } from 'ngx-toastr';
-import { of } from 'rxjs';
-import { ProductListComponent } from './product-list.component';
+import { of, throwError } from 'rxjs';
+import { ProductListComponent, PRODUCT_PAGE_SIZE, SEARCH_DEBOUNCE_MS } from './product-list.component';
 import { ProductCardComponent } from '../components/product-card/product-card.component';
 import { TruncatePipe } from '../../../shared/pipes/truncate.pipe';
 import { ProductService } from '../services/product.service';
@@ -16,7 +16,6 @@ describe('ProductListComponent', () => {
   let component: ProductListComponent;
   let fixture: ComponentFixture<ProductListComponent>;
   let productServiceSpy: jasmine.SpyObj<ProductService>;
-  let cartService: CartService;
   let notificationSpy: jasmine.SpyObj<NotificationService>;
 
   const mockProducts: Product[] = [
@@ -48,9 +47,12 @@ describe('ProductListComponent', () => {
     }
   ];
 
+  const lamp: Product = { ...mockProducts[1], id: 3, name: 'Desk Lamp', category: 'Lighting' };
+
   beforeEach(async () => {
-    productServiceSpy = jasmine.createSpyObj('ProductService', ['getProducts']);
-    productServiceSpy.getProducts.and.returnValue(of(mockProducts));
+    productServiceSpy = jasmine.createSpyObj('ProductService', ['getProducts', 'getCategories']);
+    productServiceSpy.getProducts.and.returnValue(of({ items: mockProducts, total: 2 }));
+    productServiceSpy.getCategories.and.returnValue(of(['Electronics', 'Furniture']));
 
     notificationSpy = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info', 'warning']);
 
@@ -71,7 +73,6 @@ describe('ProductListComponent', () => {
 
     fixture = TestBed.createComponent(ProductListComponent);
     component = fixture.componentInstance;
-    cartService = TestBed.inject(CartService);
     fixture.detectChanges();
   });
 
@@ -79,40 +80,78 @@ describe('ProductListComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should load products on init', () => {
-    expect(productServiceSpy.getProducts).toHaveBeenCalled();
+  it('should load the first page on init', () => {
+    expect(productServiceSpy.getProducts).toHaveBeenCalledWith({
+      limit: PRODUCT_PAGE_SIZE, offset: 0, category: undefined, search: undefined
+    });
     expect(component.products.length).toBe(2);
+    expect(component.total).toBe(2);
     expect(component.isLoading).toBeFalse();
   });
 
-  it('should extract unique categories', () => {
-    expect(component.categories).toContain('Electronics');
-    expect(component.categories).toContain('Furniture');
-    expect(component.categories.length).toBe(2);
+  it('should load every category from the server', () => {
+    expect(productServiceSpy.getCategories).toHaveBeenCalled();
+    expect(component.categories).toEqual(['Electronics', 'Furniture']);
   });
 
-  it('should filter by category', () => {
+  it('should ask the server for a category and show only what it returns', () => {
+    productServiceSpy.getProducts.and.returnValue(of({ items: [mockProducts[0]], total: 1 }));
+
     component.filterByCategory('Electronics');
-    expect(component.filteredProducts.length).toBe(1);
-    expect(component.filteredProducts[0].name).toBe('Headphones');
+
+    expect(productServiceSpy.getProducts).toHaveBeenCalledWith(
+      jasmine.objectContaining({ category: 'Electronics', offset: 0 })
+    );
+    expect(component.products.length).toBe(1);
+    expect(component.products[0].name).toBe('Headphones');
   });
 
-  it('should show all products when category is cleared', () => {
+  it('should drop the category filter when All is chosen', () => {
     component.filterByCategory('Electronics');
     component.filterByCategory('');
-    expect(component.filteredProducts.length).toBe(2);
+    expect(productServiceSpy.getProducts.calls.mostRecent().args[0].category).toBeUndefined();
   });
 
-  it('should filter by search term', () => {
+  it('should search on the server once the user pauses typing', fakeAsync(() => {
+    productServiceSpy.getProducts.calls.reset();
+
+    component.onSearchChange('cha');
     component.onSearchChange('chair');
-    expect(component.filteredProducts.length).toBe(1);
-    expect(component.filteredProducts[0].name).toBe('Office Chair');
-  });
+    tick(SEARCH_DEBOUNCE_MS - 1);
+    expect(productServiceSpy.getProducts).not.toHaveBeenCalled();
 
-  it('should combine category and search filters', () => {
+    tick(1);
+    expect(productServiceSpy.getProducts).toHaveBeenCalledOnceWith(
+      jasmine.objectContaining({ search: 'chair', offset: 0 })
+    );
+  }));
+
+  it('should send the category and the search together', fakeAsync(() => {
     component.filterByCategory('Electronics');
     component.onSearchChange('head');
-    expect(component.filteredProducts.length).toBe(1);
+    tick(SEARCH_DEBOUNCE_MS);
+    expect(productServiceSpy.getProducts.calls.mostRecent().args[0]).toEqual(
+      jasmine.objectContaining({ category: 'Electronics', search: 'head' })
+    );
+  }));
+
+  it('should append the next page when Load more is clicked', () => {
+    productServiceSpy.getProducts.and.returnValue(of({ items: mockProducts, total: 3 }));
+    component.filterByCategory('');
+    fixture.detectChanges();
+
+    productServiceSpy.getProducts.and.returnValue(of({ items: [lamp], total: 3 }));
+    fixture.nativeElement.querySelector('.product-list__more-btn').click();
+    fixture.detectChanges();
+
+    expect(productServiceSpy.getProducts.calls.mostRecent().args[0].offset).toBe(2);
+    expect(component.products.map(p => p.name)).toEqual(['Headphones', 'Office Chair', 'Desk Lamp']);
+    expect(fixture.nativeElement.querySelector('.product-list__more-btn')).toBeNull();
+  });
+
+  it('should not show Load more when every product is on screen', () => {
+    expect(component.hasMore).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.product-list__more-btn')).toBeNull();
   });
 
   it('should render product cards', () => {
@@ -123,5 +162,11 @@ describe('ProductListComponent', () => {
   it('should render category filter buttons', () => {
     const buttons = fixture.nativeElement.querySelectorAll('.product-list__category-btn');
     expect(buttons.length).toBe(3); // All + Electronics + Furniture
+  });
+
+  it('should show an error when products fail to load', () => {
+    productServiceSpy.getProducts.and.returnValue(throwError(() => new Error('offline')));
+    component.filterByCategory('Furniture');
+    expect(notificationSpy.error).toHaveBeenCalledWith('Failed to load products');
   });
 });

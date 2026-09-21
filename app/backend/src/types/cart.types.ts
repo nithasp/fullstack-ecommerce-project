@@ -11,6 +11,11 @@ export interface CartItem {
   updatedAt?: Date;
 }
 
+export interface CheckoutItem {
+  productId: number;
+  quantity: number;
+}
+
 export interface UpsertCartItemPayload {
   productId: number;
   quantity: number;

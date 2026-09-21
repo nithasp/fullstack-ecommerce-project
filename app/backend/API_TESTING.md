@@ -1,13 +1,15 @@
 # API Testing (cURL)
 
-> Base URL: `http://localhost:3000` — run `npm run watch` first.
+> API base URL: `http://localhost:3000/api/v1` — run `npm run watch` first. (The health check, `/docs` and `/openapi.yaml` sit at the server root.)
 >
 > Prefer Postman? Import [`postman/storefront-api.postman_collection.json`](postman/storefront-api.postman_collection.json) — it covers every route below and saves tokens and ids automatically.
 >
 > Prefer a browser? With the server running, open **http://localhost:3000/docs** for Swagger UI,
 > backed by [`openapi.yaml`](openapi.yaml) — the same routes, callable from the page.
 
-All responses use the shape `{ "status": <code>, "message": "...", "data": ... }`.
+All responses use the shape `{ "status": <code>, "message": "...", "data": ... }`. Paginated lists (`?limit=` 1–100, default 50, and `?offset=`) add `"meta": { "limit", "offset", "total" }`.
+
+Passwords must be at least 8 characters wherever one is set. A taken username returns `409`; an id that points at nothing (such as an unknown `productId`) returns `400`.
 
 Every route except `/`, `/auth/register`, `/auth/login`, `/auth/refresh` and `/auth/logout` requires `Authorization: Bearer <accessToken>`.
 
@@ -20,39 +22,39 @@ Accounts have a `role` of `customer` (default) or `admin`. Product create/update
 ```bash
 # 1. Create the admin (once) and log in as it; copy data.accessToken
 npm run seed:admin          # uses ADMIN_USERNAME / ADMIN_PASSWORD from .env
-curl -s -X POST http://localhost:3000/auth/login \
+curl -s -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"change-me-to-a-long-password"}'
 
 ADMIN_TOKEN="admin.access.token"
 
 # 2. Create products (admin only)
-curl -s -X POST http://localhost:3000/products \
+curl -s -X POST http://localhost:3000/api/v1/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Keyboard","price":49.99,"category":"Electronics"}'
 
-curl -s -X POST http://localhost:3000/products \
+curl -s -X POST http://localhost:3000/api/v1/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Mouse","price":29.99,"category":"Electronics"}'
 
 # 3. Register a customer and copy data.accessToken
-curl -s -X POST http://localhost:3000/auth/register \
+curl -s -X POST http://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"firstName":"John","lastName":"Doe","username":"johndoe","password":"pass1234"}'
 
 TOKEN="your.access.token"
 
 # 4. Add items to cart and checkout
-curl -s -X POST http://localhost:3000/cart \
+curl -s -X POST http://localhost:3000/api/v1/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
 
-curl -s -X POST http://localhost:3000/cart/checkout \
+curl -s -X POST http://localhost:3000/api/v1/cart/checkout \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"items":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}]}'
 
 # 5. Most popular products
-curl http://localhost:3000/products/popular -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/products/popular -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -71,40 +73,40 @@ curl http://localhost:3000/
 
 **Register** (password must be at least 8 characters; returns `user`, `accessToken`, `refreshToken`; always creates a `customer` — a `role` in the body is ignored):
 ```bash
-curl -X POST http://localhost:3000/auth/register \
+curl -X POST http://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"firstName":"John","lastName":"Doe","username":"johndoe","password":"pass1234"}'
 ```
 
 **Login:**
 ```bash
-curl -X POST http://localhost:3000/auth/login \
+curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"johndoe","password":"pass1234"}'
 ```
 
-**Refresh access token** (rotates both tokens — the old refresh token stops working):
+**Refresh access token** (rotates both tokens — the old refresh token stops working, and sending it again later revokes the whole session, including the new token):
 ```bash
-curl -X POST http://localhost:3000/auth/refresh \
+curl -X POST http://localhost:3000/api/v1/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"your.refresh.token"}'
 ```
 
 **Get current user:**
 ```bash
-curl http://localhost:3000/auth/me -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
 ```
 
-**Logout:**
+**Logout** (ends this session):
 ```bash
-curl -X POST http://localhost:3000/auth/logout \
+curl -X POST http://localhost:3000/api/v1/auth/logout \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"your.refresh.token"}'
 ```
 
 **Logout all sessions:**
 ```bash
-curl -X POST http://localhost:3000/auth/logout-all -H "Authorization: Bearer $TOKEN"
+curl -X POST http://localhost:3000/api/v1/auth/logout-all -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -115,33 +117,33 @@ curl -X POST http://localhost:3000/auth/logout-all -H "Authorization: Bearer $TO
 > Get, update and delete only work on **your own** account — use your id (`data.user.id` from register/login). Another user's id returns `403` (admins are exempt).
 > Listing and creating users require an **admin** token.
 
-**List all users** (admin):
+**List users** (admin; paginated):
 ```bash
-curl http://localhost:3000/users -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "http://localhost:3000/api/v1/users?limit=20&offset=0" -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 **Get your user** (includes 5 most recent purchases as `recentPurchases`):
 ```bash
-curl http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/users/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 **Create user** (admin; all four fields required):
 ```bash
-curl -X POST http://localhost:3000/users \
+curl -X POST http://localhost:3000/api/v1/users \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Jane","lastName":"Smith","username":"janesmith","password":"pass1234"}'
 ```
 
 **Update your user** (at least one of `firstName`, `lastName`, `username`, `password`; `role` cannot be changed here):
 ```bash
-curl -X PUT http://localhost:3000/users/1 \
+curl -X PUT http://localhost:3000/api/v1/users/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Jane"}'
 ```
 
 **Delete your user:**
 ```bash
-curl -X DELETE http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/users/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -152,7 +154,7 @@ curl -X DELETE http://localhost:3000/users/1 -H "Authorization: Bearer $TOKEN"
 
 **Create product** (admin; `name` and non-negative `price` required; see [Sample Product Data](#sample-product-data) for more products):
 ```bash
-curl -X POST http://localhost:3000/products \
+curl -X POST http://localhost:3000/api/v1/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{
     "name": "Smart Fitness Tracker Watch",
@@ -182,33 +184,40 @@ curl -X POST http://localhost:3000/products \
   }'
 ```
 
-**Bulk create products** (admin) from `sample-product-data/products.json` (run from `app/backend/`):
+**Bulk create products** (admin) from `sample-product-data/products.json` (run from `app/backend/`). All or nothing — if any product is rejected, none are saved:
 ```bash
-curl -X POST http://localhost:3000/products/bulk \
+curl -X POST http://localhost:3000/api/v1/products/bulk \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d @sample-product-data/products.json
 ```
 
-**List all / filter by category:**
+**List (paginated) / filter by category / search name and description:**
 ```bash
-curl http://localhost:3000/products -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/products?category=Electronics" -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/products -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/api/v1/products?limit=12&offset=12" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/api/v1/products?category=Electronics" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/api/v1/products?search=wireless&category=Electronics" -H "Authorization: Bearer $TOKEN"
+```
+
+**Every category** (for filter buttons that don't depend on the current page):
+```bash
+curl http://localhost:3000/api/v1/products/categories -H "Authorization: Bearer $TOKEN"
 ```
 
 **Most popular (ranked by total quantity ordered):**
 ```bash
-curl http://localhost:3000/products/popular -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/products/popular -H "Authorization: Bearer $TOKEN"
 ```
 
 **Get / Update (admin) / Delete (admin):**
 ```bash
-curl http://localhost:3000/products/1 -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/products/1 -H "Authorization: Bearer $TOKEN"
 
-curl -X PUT http://localhost:3000/products/1 \
+curl -X PUT http://localhost:3000/api/v1/products/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"price":14.99,"stock":50}'
 
-curl -X DELETE http://localhost:3000/products/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/products/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ---
@@ -220,40 +229,40 @@ curl -X DELETE http://localhost:3000/products/1 -H "Authorization: Bearer $ADMIN
 
 **Create order** (created for the token user; `userId` is optional and must be your own id; `status` defaults to `active`):
 ```bash
-curl -X POST http://localhost:3000/orders \
+curl -X POST http://localhost:3000/api/v1/orders \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"status":"active"}'
 ```
 
 **Add product to order:**
 ```bash
-curl -X POST http://localhost:3000/orders/1/products \
+curl -X POST http://localhost:3000/api/v1/orders/1/products \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":3}'
 ```
 
 **List / filter your orders:**
 ```bash
-curl http://localhost:3000/orders -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/orders?status=active" -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/orders -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:3000/api/v1/orders?status=active" -H "Authorization: Bearer $TOKEN"
 ```
 
 **Get / Update / Delete:**
 ```bash
-curl http://localhost:3000/orders/1 -H "Authorization: Bearer $TOKEN"
-curl http://localhost:3000/orders/1/products -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/orders/1 -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/orders/1/products -H "Authorization: Bearer $TOKEN"
 
-curl -X PUT http://localhost:3000/orders/1 \
+curl -X PUT http://localhost:3000/api/v1/orders/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"status":"complete"}'
 
-curl -X DELETE http://localhost:3000/orders/1 -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/orders/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 **Your order queries** (`:userId` must be your own id):
 ```bash
-curl http://localhost:3000/orders/user/1/current   -H "Authorization: Bearer $TOKEN"
-curl http://localhost:3000/orders/user/1/completed -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/orders/user/1/current   -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/orders/user/1/completed -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -264,36 +273,36 @@ curl http://localhost:3000/orders/user/1/completed -H "Authorization: Bearer $TO
 
 **Get cart:**
 ```bash
-curl http://localhost:3000/cart -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/cart -H "Authorization: Bearer $TOKEN"
 ```
 
 **Add item** (increments quantity if same product+type already exists; `quantity` defaults to 1; `typeId`, `selectedType`, `shopId`, `shopName` are optional):
 ```bash
-curl -X POST http://localhost:3000/cart \
+curl -X POST http://localhost:3000/api/v1/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2,"typeId":"69999b5d6decb17b3853fc1c","selectedType":{"color":"Black","price":129.99},"shopId":"shop_001","shopName":"TechZone Store"}'
 ```
 
 **Update item quantity:**
 ```bash
-curl -X PUT http://localhost:3000/cart/1 \
+curl -X PUT http://localhost:3000/api/v1/cart/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"quantity":5}'
 ```
 
 **Remove item:**
 ```bash
-curl -X DELETE http://localhost:3000/cart/1 -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/cart/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 **Clear cart:**
 ```bash
-curl -X DELETE http://localhost:3000/cart -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/cart -H "Authorization: Bearer $TOKEN"
 ```
 
 **Checkout** (creates a completed order from `items` and clears the cart):
 ```bash
-curl -X POST http://localhost:3000/cart/checkout \
+curl -X POST http://localhost:3000/api/v1/cart/checkout \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"items":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}]}'
 ```
@@ -306,31 +315,31 @@ curl -X POST http://localhost:3000/cart/checkout \
 
 **List addresses:**
 ```bash
-curl http://localhost:3000/addresses -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/addresses -H "Authorization: Bearer $TOKEN"
 ```
 
 **Get address:**
 ```bash
-curl http://localhost:3000/addresses/1 -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/api/v1/addresses/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 **Create address** (`fullName`, `address`, `city` required; `label` is `home` | `work` | `other`, defaults to `home`):
 ```bash
-curl -X POST http://localhost:3000/addresses \
+curl -X POST http://localhost:3000/api/v1/addresses \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"fullName":"John Doe","address":"123 Main St","city":"New York","phone":"555-1234","label":"home","isDefault":true}'
 ```
 
 **Update address:**
 ```bash
-curl -X PUT http://localhost:3000/addresses/1 \
+curl -X PUT http://localhost:3000/api/v1/addresses/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"city":"Brooklyn","isDefault":true}'
 ```
 
 **Delete address:**
 ```bash
-curl -X DELETE http://localhost:3000/addresses/1 -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/addresses/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -349,88 +358,88 @@ Then log in with those credentials at `POST /auth/login` and use the returned `a
 ### Users
 ```bash
 # List every user (with role), paginated
-curl "http://localhost:3000/admin/users?limit=50&offset=0" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "http://localhost:3000/api/v1/admin/users?limit=50&offset=0" -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Any user, with recentPurchases
-curl http://localhost:3000/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl http://localhost:3000/api/v1/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Create a user with an explicit role (customer | admin)
-curl -X POST http://localhost:3000/admin/users \
+curl -X POST http://localhost:3000/api/v1/admin/users \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Staff","lastName":"Member","username":"staff1","password":"staffpass123","role":"admin"}'
 
 # Update any user's profile fields
-curl -X PUT http://localhost:3000/admin/users/2 \
+curl -X PUT http://localhost:3000/api/v1/admin/users/2 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"firstName":"Renamed"}'
 
 # Change a role (revokes that user's refresh tokens; you cannot change your own role)
-curl -X PUT http://localhost:3000/admin/users/2/role \
+curl -X PUT http://localhost:3000/api/v1/admin/users/2/role \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"role":"admin"}'
 
 # Delete any user (you cannot delete your own account here)
-curl -X DELETE http://localhost:3000/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Orders
 ```bash
 # Every order from every user; optional ?status= and ?userId=
-curl "http://localhost:3000/admin/orders?status=active&userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "http://localhost:3000/api/v1/admin/orders?status=active&userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Create an order for a user
-curl -X POST http://localhost:3000/admin/orders \
+curl -X POST http://localhost:3000/api/v1/admin/orders \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"userId":2,"status":"active"}'
 
 # Get / update / delete any order, and manage its products
-curl http://localhost:3000/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/admin/orders/1 \
+curl http://localhost:3000/api/v1/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X PUT http://localhost:3000/api/v1/admin/orders/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"status":"complete"}'
-curl http://localhost:3000/admin/orders/1/products -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X POST http://localhost:3000/admin/orders/1/products \
+curl http://localhost:3000/api/v1/admin/orders/1/products -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X POST http://localhost:3000/api/v1/admin/orders/1/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
-curl -X DELETE http://localhost:3000/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Carts
 ```bash
 # Every user's cart items (joined with product data); optional ?userId=
-curl "http://localhost:3000/admin/carts?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "http://localhost:3000/api/v1/admin/carts?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # One user's cart / add an item to it / clear it
-curl http://localhost:3000/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X POST http://localhost:3000/admin/carts/2 \
+curl http://localhost:3000/api/v1/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X POST http://localhost:3000/api/v1/admin/carts/2 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
-curl -X DELETE http://localhost:3000/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Any single cart item by id
-curl http://localhost:3000/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/admin/cart-items/1 \
+curl http://localhost:3000/api/v1/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X PUT http://localhost:3000/api/v1/admin/cart-items/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"quantity":5}'
-curl -X DELETE http://localhost:3000/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Addresses
 ```bash
 # Every user's addresses; optional ?userId=
-curl "http://localhost:3000/admin/addresses?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "http://localhost:3000/api/v1/admin/addresses?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Create an address for a user
-curl -X POST http://localhost:3000/admin/addresses \
+curl -X POST http://localhost:3000/api/v1/admin/addresses \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"userId":2,"fullName":"John Doe","address":"123 Main St","city":"New York","label":"home","isDefault":true}'
 
 # Get / update / delete any address
-curl http://localhost:3000/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/admin/addresses/1 \
+curl http://localhost:3000/api/v1/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X PUT http://localhost:3000/api/v1/admin/addresses/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"city":"Brooklyn"}'
-curl -X DELETE http://localhost:3000/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X DELETE http://localhost:3000/api/v1/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ---
@@ -444,14 +453,14 @@ This dataset covers multiple categories and includes variant types, reviews, and
 ```powershell
 $ADMIN_TOKEN = "admin.access.token"
 $body = Get-Content -Raw "sample-product-data/products.json"
-Invoke-RestMethod -Method Post -Uri http://localhost:3000/products/bulk `
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/v1/products/bulk `
   -Headers @{ Authorization="Bearer $ADMIN_TOKEN"; "Content-Type"="application/json" } `
   -Body $body
 ```
 
 **cURL add all sample product data from sample-product-data/products.json**
 ```bash
-curl -X POST http://localhost:3000/products/bulk \
+curl -X POST http://localhost:3000/api/v1/products/bulk \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d @sample-product-data/products.json

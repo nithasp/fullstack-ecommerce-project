@@ -55,7 +55,7 @@ npm run migrate:up
 ```
 
 ### 4b. Create the first admin
-Self-registration always creates a `customer`. The only ways to get an `admin` account are this script or an existing admin calling `PUT /admin/users/:id/role`.
+Self-registration always creates a `customer`. The only ways to get an `admin` account are this script or an existing admin calling `PUT /api/v1/admin/users/:id/role`.
 
 ```bash
 # set ADMIN_USERNAME / ADMIN_PASSWORD (12+ chars) in .env, then:
@@ -76,9 +76,27 @@ npm test
 
 ---
 
+## Code layout
+
+A request passes through four layers, each in its own folder under `src/`:
+
+```
+routes/        URL + middleware chain per domain (express.Router), mounted under /api/v1 by routes/index.ts
+controllers/   Read and validate the request, call a repository or service, send the response
+services/      Logic that spans several repositories or needs a transaction (tokens, checkout)
+repositories/  One class per table; parameterized SQL and row mapping, nothing HTTP-specific
+```
+
+Around them: `app.ts` assembles the Express app (tests import it), `server.ts` only calls
+`listen`, `middleware/` holds auth and rate limiting, `utils/` the shared validators, response
+helpers and error handler, and `types/` the shapes passed between layers. Simple CRUD goes
+straight from controller to repository; a service exists only where there is real logic.
+
+---
+
 ## API Reference
 
-The full API is described by [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0.3, all 64 routes).
+The full API is described by [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0.3, all 65 routes).
 With the server running, browse it as Swagger UI:
 
 | URL                              | What it is                                  |
@@ -91,22 +109,27 @@ Click **Authorize** and paste an `accessToken` to use "Try it out" on authentica
 The spec file also imports into Postman, Insomnia or an API client of your choice, and
 generates typed clients via `openapi-generator` / `openapi-typescript`.
 
-Both doc routes are public. To take them off a deployed instance, drop the `docsRoutes(app)`
-call in [`src/server.ts`](src/server.ts).
+Both doc routes are public. To take them off a deployed instance, drop the `app.use(docsRoutes)`
+line in [`src/app.ts`](src/app.ts).
 
 ---
 
 ## API Routes
 
-| Group      | Base Path     | Auth Required            |
-| ---------- | ------------- | ------------------------ |
-| Auth       | `/auth`       | Partial                  |
-| Users      | `/users`      | JWT (list/create: admin) |
-| Products   | `/products`   | JWT (writes: admin)      |
-| Orders     | `/orders`     | JWT                      |
-| Cart       | `/cart`       | JWT                      |
-| Addresses  | `/addresses`  | JWT                      |
-| Admin      | `/admin`      | JWT + admin role         |
+Every API route is versioned under `/api/v1`, so a breaking change can ship as `/api/v2` alongside it.
+
+| Group      | Base Path            | Auth Required            |
+| ---------- | -------------------- | ------------------------ |
+| Auth       | `/api/v1/auth`       | Partial                  |
+| Users      | `/api/v1/users`      | JWT (list/create: admin) |
+| Products   | `/api/v1/products`   | JWT (writes: admin)      |
+| Orders     | `/api/v1/orders`     | JWT                      |
+| Cart       | `/api/v1/cart`       | JWT                      |
+| Addresses  | `/api/v1/addresses`  | JWT                      |
+| Admin      | `/api/v1/admin`      | JWT + admin role         |
+
+List routes are paginated with `?limit=` (1–100, default 50) and `?offset=`, and return a
+`meta: { limit, offset, total }` object next to `data`.
 
 ### Roles
 Every account has a `role`: `customer` (default) or `admin`.

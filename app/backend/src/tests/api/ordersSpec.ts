@@ -1,5 +1,5 @@
 import supertest from 'supertest';
-import app from '../../server';
+import app from '../../app';
 import { Order } from '../../types/order.types';
 import { Product } from '../../types/product.types';
 import { createAdmin } from '../support/admin';
@@ -18,7 +18,7 @@ describe('Order Endpoints', () => {
       username: 'ordertester_' + Date.now(),
       password: 'testpass123',
     };
-    const userResponse = await request.post('/auth/register').send(user);
+    const userResponse = await request.post('/api/v1/auth/register').send(user);
     token = userResponse.body.data.accessToken;
     userId = userResponse.body.data.user.id;
 
@@ -33,7 +33,7 @@ describe('Order Endpoints', () => {
     };
     const admin = await createAdmin(request, 'orderadmin');
     const productResponse = await request
-      .post('/products')
+      .post('/api/v1/products')
       .set('Authorization', `Bearer ${admin.token}`)
       .send(product);
     productId = productResponse.body.data.id;
@@ -46,7 +46,7 @@ describe('Order Endpoints', () => {
     };
 
     const response = await request
-      .post('/orders')
+      .post('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
       .send(order)
       .expect(201);
@@ -58,7 +58,7 @@ describe('Order Endpoints', () => {
 
   it('POST /orders should default to the token user when userId is omitted', async () => {
     const response = await request
-      .post('/orders')
+      .post('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
       .send({ status: 'active' })
       .expect(201);
@@ -67,16 +67,16 @@ describe('Order Endpoints', () => {
   });
 
   it('POST /orders should require token', async () => {
-    await request.post('/orders').send({ userId }).expect(401);
+    await request.post('/api/v1/orders').send({ userId }).expect(401);
   });
 
   it('GET /orders should require token', async () => {
-    await request.get('/orders').expect(401);
+    await request.get('/api/v1/orders').expect(401);
   });
 
   it('GET /orders should return list of orders with token', async () => {
     const response = await request
-      .get('/orders')
+      .get('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -85,7 +85,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders/:id should return an order with token', async () => {
     const response = await request
-      .get(`/orders/${orderId}`)
+      .get(`/api/v1/orders/${orderId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -94,7 +94,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders?userId= should return orders for user', async () => {
     const response = await request
-      .get(`/orders?userId=${userId}`)
+      .get(`/api/v1/orders?userId=${userId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -106,7 +106,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders?status=active should return active orders', async () => {
     const response = await request
-      .get('/orders?status=active')
+      .get('/api/v1/orders?status=active')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -118,7 +118,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders?status=active&userId= should return active orders for user', async () => {
     const response = await request
-      .get(`/orders?status=active&userId=${userId}`)
+      .get(`/api/v1/orders?status=active&userId=${userId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -131,7 +131,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders/user/:userId/current should return current active orders for user', async () => {
     const response = await request
-      .get(`/orders/user/${userId}/current`)
+      .get(`/api/v1/orders/user/${userId}/current`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -144,12 +144,12 @@ describe('Order Endpoints', () => {
   });
 
   it('GET /orders/user/:userId/current should require token', async () => {
-    await request.get(`/orders/user/${userId}/current`).expect(401);
+    await request.get(`/api/v1/orders/user/${userId}/current`).expect(401);
   });
 
   it('POST /orders/:id/products should add product to order', async () => {
     const response = await request
-      .post(`/orders/${orderId}/products`)
+      .post(`/api/v1/orders/${orderId}/products`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         productId,
@@ -164,7 +164,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders/:id/products should return products for an order', async () => {
     const response = await request
-      .get(`/orders/${orderId}/products`)
+      .get(`/api/v1/orders/${orderId}/products`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -176,12 +176,12 @@ describe('Order Endpoints', () => {
   });
 
   it('GET /orders/:id/products should require token', async () => {
-    await request.get(`/orders/${orderId}/products`).expect(401);
+    await request.get(`/api/v1/orders/${orderId}/products`).expect(401);
   });
 
   it('PUT /orders/:id should update order status with token', async () => {
     const response = await request
-      .put(`/orders/${orderId}`)
+      .put(`/api/v1/orders/${orderId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ status: 'complete' })
       .expect(200);
@@ -192,7 +192,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders?status=complete&userId= should return completed orders for user', async () => {
     const response = await request
-      .get(`/orders?status=complete&userId=${userId}`)
+      .get(`/api/v1/orders?status=complete&userId=${userId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -206,7 +206,7 @@ describe('Order Endpoints', () => {
 
   it('GET /orders/user/:userId/completed should return completed orders for user', async () => {
     const response = await request
-      .get(`/orders/user/${userId}/completed`)
+      .get(`/api/v1/orders/user/${userId}/completed`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -219,27 +219,27 @@ describe('Order Endpoints', () => {
   });
 
   it('GET /orders/user/:userId/completed should require token', async () => {
-    await request.get(`/orders/user/${userId}/completed`).expect(401);
+    await request.get(`/api/v1/orders/user/${userId}/completed`).expect(401);
   });
 
   it('PUT /orders/:id should require token', async () => {
-    await request.put(`/orders/${orderId}`).send({ status: 'complete' }).expect(401);
+    await request.put(`/api/v1/orders/${orderId}`).send({ status: 'complete' }).expect(401);
   });
 
   it('DELETE /orders/:id should require token', async () => {
-    await request.delete(`/orders/${orderId}`).expect(401);
+    await request.delete(`/api/v1/orders/${orderId}`).expect(401);
   });
 
   it('DELETE /orders/:id should delete an order with token', async () => {
     const createRes = await request
-      .post('/orders')
+      .post('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
       .send({ userId, status: 'active' });
 
     const deleteOrderId = createRes.body.data.id;
 
     const response = await request
-      .delete(`/orders/${deleteOrderId}`)
+      .delete(`/api/v1/orders/${deleteOrderId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -252,7 +252,7 @@ describe('Order Endpoints', () => {
     let otherOrderId: number;
 
     beforeAll(async () => {
-      const res = await request.post('/auth/register').send({
+      const res = await request.post('/api/v1/auth/register').send({
         firstName: 'Other',
         lastName: 'Customer',
         username: 'otherordertester_' + Date.now(),
@@ -262,7 +262,7 @@ describe('Order Endpoints', () => {
       otherUserId = res.body.data.user.id;
 
       const orderRes = await request
-        .post('/orders')
+        .post('/api/v1/orders')
         .set('Authorization', `Bearer ${otherToken}`)
         .send({ status: 'active' });
       otherOrderId = orderRes.body.data.id;
@@ -270,7 +270,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders should only return orders of the token user', async () => {
       const response = await request
-        .get('/orders')
+        .get('/api/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -282,7 +282,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders?userId= should return 403 for another user', async () => {
       const response = await request
-        .get(`/orders?userId=${otherUserId}`)
+        .get(`/api/v1/orders?userId=${otherUserId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
       expect(response.body.message).toBe('You can only access your own data');
@@ -290,21 +290,21 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/user/:userId/current should return 403 for another user', async () => {
       await request
-        .get(`/orders/user/${otherUserId}/current`)
+        .get(`/api/v1/orders/user/${otherUserId}/current`)
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
     });
 
     it('GET /orders/user/:userId/completed should return 403 for another user', async () => {
       await request
-        .get(`/orders/user/${otherUserId}/completed`)
+        .get(`/api/v1/orders/user/${otherUserId}/completed`)
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
     });
 
     it('POST /orders should return 403 when userId belongs to another user', async () => {
       await request
-        .post('/orders')
+        .post('/api/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .send({ userId: otherUserId, status: 'active' })
         .expect(403);
@@ -312,7 +312,7 @@ describe('Order Endpoints', () => {
 
     it("GET /orders/:id should return 404 for another user's order", async () => {
       const response = await request
-        .get(`/orders/${otherOrderId}`)
+        .get(`/api/v1/orders/${otherOrderId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
       expect(response.body.message).toBe(`order with id ${otherOrderId} not found`);
@@ -320,14 +320,14 @@ describe('Order Endpoints', () => {
 
     it("GET /orders/:id/products should return 404 for another user's order", async () => {
       await request
-        .get(`/orders/${otherOrderId}/products`)
+        .get(`/api/v1/orders/${otherOrderId}/products`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it("POST /orders/:id/products should return 404 for another user's order", async () => {
       await request
-        .post(`/orders/${otherOrderId}/products`)
+        .post(`/api/v1/orders/${otherOrderId}/products`)
         .set('Authorization', `Bearer ${token}`)
         .send({ productId, quantity: 1 })
         .expect(404);
@@ -335,13 +335,13 @@ describe('Order Endpoints', () => {
 
     it("PUT /orders/:id should return 404 for another user's order and leave it unchanged", async () => {
       await request
-        .put(`/orders/${otherOrderId}`)
+        .put(`/api/v1/orders/${otherOrderId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({ status: 'complete' })
         .expect(404);
 
       const response = await request
-        .get(`/orders/${otherOrderId}`)
+        .get(`/api/v1/orders/${otherOrderId}`)
         .set('Authorization', `Bearer ${otherToken}`)
         .expect(200);
       expect(response.body.data.status).toBe('active');
@@ -349,12 +349,12 @@ describe('Order Endpoints', () => {
 
     it("DELETE /orders/:id should return 404 for another user's order and keep it", async () => {
       await request
-        .delete(`/orders/${otherOrderId}`)
+        .delete(`/api/v1/orders/${otherOrderId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
 
       await request
-        .get(`/orders/${otherOrderId}`)
+        .get(`/api/v1/orders/${otherOrderId}`)
         .set('Authorization', `Bearer ${otherToken}`)
         .expect(200);
     });
@@ -363,7 +363,7 @@ describe('Order Endpoints', () => {
   describe('Input Validation', () => {
     it('GET /orders should return 400 for invalid status filter', async () => {
       const response = await request
-        .get('/orders?status=invalid')
+        .get('/api/v1/orders?status=invalid')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe("status filter must be either 'active' or 'complete'");
@@ -371,7 +371,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders should return 400 for invalid userId filter', async () => {
       const response = await request
-        .get('/orders?userId=abc')
+        .get('/api/v1/orders?userId=abc')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('userId filter must be a valid positive integer');
@@ -379,7 +379,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/:id should return 400 for invalid id', async () => {
       const response = await request
-        .get('/orders/abc')
+        .get('/api/v1/orders/abc')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('order id must be a valid positive integer');
@@ -387,7 +387,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/:id should return 404 for nonexistent id', async () => {
       const response = await request
-        .get('/orders/99999')
+        .get('/api/v1/orders/99999')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
       expect(response.body.message).toBe('order with id 99999 not found');
@@ -395,7 +395,7 @@ describe('Order Endpoints', () => {
 
     it('POST /orders should return 400 when userId is invalid', async () => {
       const response = await request
-        .post('/orders')
+        .post('/api/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .send({ userId: 'abc', status: 'active' })
         .expect(400);
@@ -404,7 +404,7 @@ describe('Order Endpoints', () => {
 
     it('POST /orders should return 400 when status is invalid', async () => {
       const response = await request
-        .post('/orders')
+        .post('/api/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .send({ userId, status: 'invalid' })
         .expect(400);
@@ -413,7 +413,7 @@ describe('Order Endpoints', () => {
 
     it('PUT /orders/:id should return 400 for invalid id', async () => {
       const response = await request
-        .put('/orders/abc')
+        .put('/api/v1/orders/abc')
         .set('Authorization', `Bearer ${token}`)
         .send({ status: 'complete' })
         .expect(400);
@@ -422,7 +422,7 @@ describe('Order Endpoints', () => {
 
     it('PUT /orders/:id should return 400 when status is missing', async () => {
       const response = await request
-        .put(`/orders/${orderId}`)
+        .put(`/api/v1/orders/${orderId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({})
         .expect(400);
@@ -431,7 +431,7 @@ describe('Order Endpoints', () => {
 
     it('PUT /orders/:id should return 400 when status is invalid', async () => {
       const response = await request
-        .put(`/orders/${orderId}`)
+        .put(`/api/v1/orders/${orderId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({ status: 'invalid' })
         .expect(400);
@@ -440,7 +440,7 @@ describe('Order Endpoints', () => {
 
     it('DELETE /orders/:id should return 400 for invalid id', async () => {
       const response = await request
-        .delete('/orders/abc')
+        .delete('/api/v1/orders/abc')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('order id must be a valid positive integer');
@@ -448,7 +448,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/:id/products should return 400 for invalid id', async () => {
       const response = await request
-        .get('/orders/abc/products')
+        .get('/api/v1/orders/abc/products')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('order id must be a valid positive integer');
@@ -456,7 +456,7 @@ describe('Order Endpoints', () => {
 
     it('POST /orders/:id/products should return 400 when productId is missing', async () => {
       const response = await request
-        .post(`/orders/${orderId}/products`)
+        .post(`/api/v1/orders/${orderId}/products`)
         .set('Authorization', `Bearer ${token}`)
         .send({ quantity: 1 })
         .expect(400);
@@ -465,7 +465,7 @@ describe('Order Endpoints', () => {
 
     it('POST /orders/:id/products should return 400 when quantity is missing', async () => {
       const response = await request
-        .post(`/orders/${orderId}/products`)
+        .post(`/api/v1/orders/${orderId}/products`)
         .set('Authorization', `Bearer ${token}`)
         .send({ productId })
         .expect(400);
@@ -474,7 +474,7 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/user/:userId/current should return 400 for invalid userId', async () => {
       const response = await request
-        .get('/orders/user/abc/current')
+        .get('/api/v1/orders/user/abc/current')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('userId must be a valid positive integer');
@@ -482,10 +482,31 @@ describe('Order Endpoints', () => {
 
     it('GET /orders/user/:userId/completed should return 400 for invalid userId', async () => {
       const response = await request
-        .get('/orders/user/abc/completed')
+        .get('/api/v1/orders/user/abc/completed')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
       expect(response.body.message).toBe('userId must be a valid positive integer');
+    });
+  });
+
+  describe('References and pagination', () => {
+    it('POST /orders/:id/products should return 400 for a product that does not exist', async () => {
+      const response = await request
+        .post(`/api/v1/orders/${orderId}/products`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productId: 999999, quantity: 1 })
+        .expect(400);
+      expect(response.body.message).toBe('Product does not exist');
+    });
+
+    it('GET /orders should return one page and the total', async () => {
+      const response = await request
+        .get('/api/v1/orders?limit=1')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(response.body.data.length).toBe(1);
+      expect(response.body.meta.limit).toBe(1);
+      expect(response.body.meta.total).toBeGreaterThanOrEqual(1);
     });
   });
 });

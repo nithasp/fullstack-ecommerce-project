@@ -1,30 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
-import { UserStore } from '../models/user';
-import { USER_ROLES, UserRole } from '../types/user.types';
-import { AccessTokenPayload } from '../types/auth.types';
+import { UserRepository } from '../repositories/user.repository';
+import { verifyAccessToken } from '../services/token.service';
 
-const userStore = new UserStore();
+const users = new UserRepository();
 
 // Returns distinct error codes (no_token / token_expired / token_invalid) for frontend token-refresh logic
 export const verifyAuthToken = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.status(401).json({ error: 'Access denied. No token provided.', code: 'no_token' });
+    return;
+  }
+
+  // Only the Bearer scheme is accepted (case-insensitive, per RFC 7235)
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });
+    return;
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      res.status(401).json({ error: 'Access denied. No token provided.', code: 'no_token' });
-      return;
-    }
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, config.tokenSecret) as AccessTokenPayload;
-    if (typeof decoded.userId !== 'number') {
-      res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });
-      return;
-    }
-    // Tokens issued before roles existed carry no role and are treated as customers
-    const role: UserRole = USER_ROLES.includes(decoded.role as UserRole) ? (decoded.role as UserRole) : 'customer';
-    req.user = { userId: decoded.userId, role };
-    next();
+    req.user = verifyAccessToken(token);
   } catch (err) {
     const jwtErr = err as { name?: string };
     if (jwtErr.name === 'TokenExpiredError') {
@@ -32,7 +28,9 @@ export const verifyAuthToken = (req: Request, res: Response, next: NextFunction)
     } else {
       res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });
     }
+    return;
   }
+  next();
 };
 
 // Admin routes re-read the role from the database instead of trusting the JWT claim alone,
@@ -43,7 +41,7 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
       res.status(401).json({ error: 'Access denied. No token provided.', code: 'no_token' });
       return;
     }
-    const user = await userStore.show(req.user.userId);
+    const user = await users.show(req.user.userId);
     if (!user) {
       res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });
       return;

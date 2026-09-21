@@ -12,8 +12,9 @@ npm-debug.log
 yarn-error.log
 *.log
 
-# Environment variables
-.env
+# Environment variables: every .env variant holds secrets; only the example (keys, no values) is committed
+.env*
+!.env.example
 
 # IDEs and editors
 .idea/

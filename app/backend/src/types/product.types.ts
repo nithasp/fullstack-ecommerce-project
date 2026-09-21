@@ -33,3 +33,8 @@ export interface Product {
   shopId?: string;
   shopName?: string;
 }
+
+export interface ProductFilters {
+  category?: string; // exact match, case-insensitive
+  search?: string;   // substring of the name or description, case-insensitive
+}

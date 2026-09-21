@@ -65,9 +65,13 @@ ng test
 ├── app/
 │   ├── backend/              # Node/Express REST API + PostgreSQL
 │   │   ├── src/
-│   │   │   ├── handlers/     # Route handlers (auth, products, cart, orders, addresses, admin)
-│   │   │   ├── models/       # Database models
-│   │   │   ├── middleware/   # JWT auth, admin role check, audit log
+│   │   │   ├── app.ts        # Express app assembly (server.ts only calls listen)
+│   │   │   ├── routes/       # URL + middleware per domain, mounted under /api/v1
+│   │   │   ├── controllers/  # Request parsing, validation and responses
+│   │   │   ├── services/     # Multi-step logic: token issue/rotation, checkout
+│   │   │   ├── repositories/ # One class per table: parameterized SQL + row mapping
+│   │   │   ├── middleware/   # JWT auth, admin role check, audit log, rate limits
+│   │   │   ├── utils/        # Validators, response envelope, error handler
 │   │   │   ├── scripts/      # seed:admin bootstrap
 │   │   │   └── types/        # TypeScript interfaces
 │   │   └── migrations/       # Database migration files

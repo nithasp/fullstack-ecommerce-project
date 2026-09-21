@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes';
+import userRoutes from './users.routes';
+import productRoutes from './products.routes';
+import orderRoutes from './orders.routes';
+import cartRoutes from './cart.routes';
+import addressRoutes from './addresses.routes';
+import adminRoutes from './admin.routes';
+
+// Everything under the versioned prefix; app.ts mounts this at /api/v1
+const api = Router();
+
+api.use('/auth',      authRoutes);
+api.use('/users',     userRoutes);
+api.use('/products',  productRoutes);
+api.use('/orders',    orderRoutes);
+api.use('/cart',      cartRoutes);
+api.use('/addresses', addressRoutes);
+api.use('/admin',     adminRoutes);
+
+export default api;

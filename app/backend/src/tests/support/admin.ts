@@ -1,7 +1,7 @@
-import { UserStore } from '../../models/user';
+import { UserRepository } from '../../repositories/user.repository';
 import { TestAdmin, TestRequest } from '../../types/test.types';
 
-const userStore = new UserStore();
+const users = new UserRepository();
 
 /**
  * Creates an admin account directly through the model (the same path `npm run seed:admin` uses —
@@ -11,9 +11,9 @@ export async function createAdmin(request: TestRequest, prefix = 'admin'): Promi
   const username = `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const password = 'adminpass12345';
 
-  await userStore.create({ username, password, firstName: 'Admin', lastName: 'User', role: 'admin' });
+  await users.create({ username, password, firstName: 'Admin', lastName: 'User', role: 'admin' });
 
-  const res = await request.post('/auth/login').send({ username, password }).expect(200);
+  const res = await request.post('/api/v1/auth/login').send({ username, password }).expect(200);
   return {
     userId: res.body.data.user.id,
     username,

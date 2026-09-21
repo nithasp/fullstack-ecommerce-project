@@ -39,15 +39,26 @@
     <app-loading-spinner message="Loading products..." layout="block"></app-loading-spinner>
   </div>
 
-  <div *ngIf="!isLoading && filteredProducts.length === 0" class="product-list__empty">
+  <div *ngIf="!isLoading && products.length === 0" class="product-list__empty">
     <p>No products found. Try a different search or category.</p>
   </div>
 
   <div *ngIf="!isLoading" class="product-list__grid">
     <app-product-card
-      *ngFor="let product of filteredProducts; let i = index"
+      *ngFor="let product of products; let i = index"
       [product]="product"
-      class="animate-slide-up animate-delay-{{ i + 1 }}"
+      class="animate-slide-up animate-delay-{{ (i % pageSize) + 1 }}"
     ></app-product-card>
+  </div>
+
+  <div *ngIf="!isLoading && hasMore" class="product-list__more">
+    <button
+      type="button"
+      class="product-list__more-btn"
+      [disabled]="isLoadingMore"
+      (click)="loadMore()"
+    >
+      {{ isLoadingMore ? 'Loading...' : 'Load more' }}
+    </button>
   </div>
 </div>

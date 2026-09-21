@@ -1,18 +1,18 @@
-import { Application, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import helmet from 'helmet';
 import fs from 'fs';
 import path from 'path';
 
 /**
- * Serves the OpenAPI spec and a Swagger UI for it.
+ * Serves the OpenAPI spec and a Swagger UI for it, outside the versioned /api/v1 prefix.
  *
  * Both routes are public: the spec documents the API surface, not its data, and the UI is
  * only useful to someone who already has an account to authorize with. To take the docs
- * off a deployed instance, drop the `docsRoutes(app)` call in server.ts.
+ * off a deployed instance, drop the `app.use(docsRoutes)` line in app.ts.
  */
 
 // Resolved from this file rather than the working directory, so it works from dist/ and
-// inside the container (both put openapi.yaml two levels up from the compiled handler)
+// inside the container (both put openapi.yaml two levels up from the compiled route file)
 const SPEC_PATH = path.join(__dirname, '..', '..', 'openapi.yaml');
 
 // Read once and cache; the spec ships with the build and cannot change under a running server
@@ -342,17 +342,17 @@ const sendSpec = (_req: Request, res: Response): void => {
   }
 };
 
-const docsRoutes = (app: Application) => {
-  app.get('/openapi.yaml', sendSpec);
-  app.get('/docs/init.js', (_req: Request, res: Response) => {
-    res.type('application/javascript').send(DOCS_INIT);
-  });
-  app.get('/docs/theme.css', (_req: Request, res: Response) => {
-    res.type('text/css').send(DOCS_THEME);
-  });
-  app.get('/docs', docsCsp, (_req: Request, res: Response) => {
-    res.type('html').send(DOCS_PAGE);
-  });
-};
+const router = Router();
 
-export default docsRoutes;
+router.get('/openapi.yaml', sendSpec);
+router.get('/docs/init.js', (_req: Request, res: Response) => {
+  res.type('application/javascript').send(DOCS_INIT);
+});
+router.get('/docs/theme.css', (_req: Request, res: Response) => {
+  res.type('text/css').send(DOCS_THEME);
+});
+router.get('/docs', docsCsp, (_req: Request, res: Response) => {
+  res.type('html').send(DOCS_PAGE);
+});
+
+export default router;

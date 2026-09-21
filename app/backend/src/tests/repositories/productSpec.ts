@@ -1,9 +1,9 @@
 import { Product } from '../../types/product.types';
-import { ProductStore } from '../../models/product';
+import { ProductRepository } from '../../repositories/product.repository';
 
-const store = new ProductStore();
+const repository = new ProductRepository();
 
-describe('Product Model', () => {
+describe('Product Repository', () => {
   const testProduct: Product = {
     name: 'Wireless Bluetooth Headphones',
     price: 79.99,
@@ -40,23 +40,24 @@ describe('Product Model', () => {
   };
 
   it('should have an index method', () => {
-    expect(store.index).toBeDefined();
+    expect(repository.index).toBeDefined();
   });
 
   it('should have a show method', () => {
-    expect(store.show).toBeDefined();
+    expect(repository.show).toBeDefined();
   });
 
   it('should have a create method', () => {
-    expect(store.create).toBeDefined();
+    expect(repository.create).toBeDefined();
   });
 
-  it('should have a getByCategory method', () => {
-    expect(store.getByCategory).toBeDefined();
+  it('should have count and categories methods', () => {
+    expect(repository.count).toBeDefined();
+    expect(repository.categories).toBeDefined();
   });
 
   it('create method should add a product', async () => {
-    const result = await store.create(testProduct);
+    const result = await repository.create(testProduct);
     expect(result.name).toBe(testProduct.name);
     expect(parseFloat(result.price as unknown as string)).toBe(testProduct.price);
     expect(result.category).toBe(testProduct.category);
@@ -71,56 +72,106 @@ describe('Product Model', () => {
   });
 
   it('index method should return a list of products', async () => {
-    const result = await store.index();
+    const result = await repository.index();
     expect(result.length).toBeGreaterThan(0);
   });
 
   it('show method should return the correct product', async () => {
-    const products = await store.index();
-    const result = await store.show(products[0].id as number);
-    expect(result.id).toBe(products[0].id);
+    const products = await repository.index();
+    const result = await repository.show(products[0].id as number);
+    expect(result?.id).toBe(products[0].id);
   });
 
-  it('getByCategory method should return products in the category', async () => {
-    const result = await store.getByCategory(testProduct.category as string);
+  it('show method should return null for a missing product', async () => {
+    expect(await repository.show(999999)).toBeNull();
+  });
+
+  it('index method should filter by category', async () => {
+    const result = await repository.index({ category: testProduct.category });
     expect(result.length).toBeGreaterThan(0);
     expect(result[0].category).toBe(testProduct.category);
   });
 
-  it('getByCategory method should be case-insensitive', async () => {
-    const result = await store.getByCategory(
-      (testProduct.category as string).toLowerCase()
-    );
+  it('index method should match the category case-insensitively', async () => {
+    const result = await repository.index({ category: (testProduct.category as string).toLowerCase() });
     expect(result.length).toBeGreaterThan(0);
     expect(result[0].category).toBe(testProduct.category);
+  });
+
+  it('index method should search the name and description case-insensitively', async () => {
+    const byName = await repository.index({ search: 'BLUETOOTH' });
+    expect(byName.some((p) => p.name === testProduct.name)).toBe(true);
+
+    const byDescription = await repository.index({ search: 'noise cancellation' });
+    expect(byDescription.some((p) => p.name === testProduct.name)).toBe(true);
+  });
+
+  it('index method should treat % and _ in a search as plain characters', async () => {
+    expect(await repository.index({ search: '%_%' })).toEqual([]);
+  });
+
+  it('index method should return the requested page', async () => {
+    await repository.create({ name: 'Second Page Product', price: 1 });
+    const firstPage = await repository.index({}, { limit: 1, offset: 0 });
+    const secondPage = await repository.index({}, { limit: 1, offset: 1 });
+    expect(firstPage.length).toBe(1);
+    expect(secondPage.length).toBe(1);
+    expect(firstPage[0].id).not.toBe(secondPage[0].id);
+  });
+
+  it('count method should count the rows index would return', async () => {
+    const filters = { category: testProduct.category };
+    expect(await repository.count(filters)).toBe((await repository.index(filters)).length);
+    expect(await repository.count()).toBe((await repository.index()).length);
+  });
+
+  it('categories method should list each category once', async () => {
+    const result = await repository.categories();
+    expect(result).toContain(testProduct.category as string);
+    expect(new Set(result).size).toBe(result.length);
   });
 
   it('update method should update product information', async () => {
-    const products = await store.index();
+    const products = await repository.index();
     const productId = products[0].id as number;
-    const result = await store.update(productId, {
+    const result = await repository.update(productId, {
       name: 'Updated Product',
       price: 39.99,
       description: 'Updated description',
       stock: 100
     });
-    expect(result.name).toBe('Updated Product');
-    expect(parseFloat(result.price as unknown as string)).toBe(39.99);
-    expect(result.description).toBe('Updated description');
-    expect(result.stock).toBe(100);
+    expect(result?.name).toBe('Updated Product');
+    expect(parseFloat(result?.price as unknown as string)).toBe(39.99);
+    expect(result?.description).toBe('Updated description');
+    expect(result?.stock).toBe(100);
+  });
+
+  it('update method with no fields should return the product unchanged', async () => {
+    const [product] = await repository.index({}, { limit: 1, offset: 0 });
+    const result = await repository.update(product.id as number, {});
+    expect(result?.name).toBe(product.name);
+  });
+
+  it('bulkCreate method should insert nothing when one row is rejected', async () => {
+    const before = await repository.count();
+    await expectAsync(repository.bulkCreate([
+      { name: 'Bulk Row That Fits', price: 1 },
+      { name: 'Bulk Row Out Of Range', price: 1, stock: 1e12 }, // too large for the INTEGER column
+    ])).toBeRejected();
+    expect(await repository.count()).toBe(before);
   });
 
   it('delete method should remove the product', async () => {
-    const created = await store.create({
+    const created = await repository.create({
       name: 'To Delete',
       price: 5.00,
       category: 'Temp',
       stock: 0,
       isActive: false
     });
-    const result = await store.delete(created.id as number);
-    expect(result.id).toBe(created.id);
-    const remaining = await store.index();
+    const result = await repository.delete(created.id as number);
+    expect(result?.id).toBe(created.id);
+    const remaining = await repository.index();
     const found = remaining.find((p) => p.id === created.id);
     expect(found).toBeUndefined();
   });

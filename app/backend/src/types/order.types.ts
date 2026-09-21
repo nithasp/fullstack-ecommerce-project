@@ -8,6 +8,11 @@ export interface Order {
   status: string;
 }
 
+export interface OrderFilters {
+  status?: OrderStatus;
+  userId?: number;
+}
+
 export interface OrderProduct {
   id?: number;
   orderId: number;

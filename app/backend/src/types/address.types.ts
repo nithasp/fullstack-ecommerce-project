@@ -1,3 +1,7 @@
+export const ADDRESS_LABELS = ['home', 'work', 'other'] as const;
+
+export type AddressLabel = typeof ADDRESS_LABELS[number];
+
 export interface Address {
   id?: number;
   userId: number;
@@ -5,7 +9,7 @@ export interface Address {
   phone?: string;
   address: string;
   city: string;
-  label: 'home' | 'work' | 'other';
+  label: AddressLabel;
   isDefault: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -16,6 +20,6 @@ export interface AddressForm {
   phone?: string | null; // null clears the stored phone on update
   address: string;
   city: string;
-  label: 'home' | 'work' | 'other';
+  label: AddressLabel;
   isDefault: boolean;
 }

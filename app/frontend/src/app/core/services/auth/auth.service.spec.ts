@@ -13,7 +13,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let httpMock: HttpTestingController;
 
-  const API = 'http://localhost:3000/auth';
+  const API = 'http://localhost:3000/api/v1/auth';
 
   const mockAuthResponse: AuthResponse = {
     user: {

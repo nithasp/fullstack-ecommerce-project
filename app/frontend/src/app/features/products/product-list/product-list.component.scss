@@ -105,4 +105,23 @@
     color: $color-text-light;
     font-size: $font-size-lg;
   }
+
+  &__more {
+    @include flex-center;
+    margin-top: $spacing-xl;
+  }
+
+  &__more-btn {
+    @include button-base;
+    padding: $spacing-sm $spacing-xl;
+    background: $color-bg-white;
+    color: $color-primary;
+    border: 2px solid $color-primary;
+    border-radius: $border-radius-full;
+
+    &:hover:not(:disabled) {
+      background: $color-primary;
+      color: white;
+    }
+  }
 }

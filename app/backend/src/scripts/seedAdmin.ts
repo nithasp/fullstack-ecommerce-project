@@ -4,14 +4,14 @@
  *   ADMIN_USERNAME=admin ADMIN_PASSWORD=<long password> npm run seed:admin
  *
  * Self-registration can never create an admin, so this script (or an existing admin using
- * PUT /admin/users/:id/role) is the only way an account gets the admin role.
+ * PUT /api/v1/admin/users/:id/role) is the only way an account gets the admin role.
  * Running it again is safe: an existing account with that username is promoted, never recreated.
  */
 import dotenv from 'dotenv';
 dotenv.config();
 
-import client from '../database';
-import { UserStore } from '../models/user';
+import pool from '../database';
+import { UserRepository } from '../repositories/user.repository';
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -24,20 +24,20 @@ async function main(): Promise<void> {
     throw new Error(`ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters.`);
 
   const username = ADMIN_USERNAME.trim();
-  const store = new UserStore();
-  const existing = await store.findByUsername(username);
+  const users = new UserRepository();
+  const existing = await users.findByUsername(username);
 
   if (existing) {
     if (existing.role === 'admin') {
       console.log(`[seed:admin] "${username}" (id ${existing.id}) is already an admin. Nothing to do.`);
       return;
     }
-    await store.updateRole(existing.id!, 'admin');
+    await users.updateRole(existing.id, 'admin');
     console.log(`[seed:admin] Promoted existing user "${username}" (id ${existing.id}) to admin.`);
     return;
   }
 
-  const created = await store.create({
+  const created = await users.create({
     username,
     password: ADMIN_PASSWORD,
     firstName: ADMIN_FIRST_NAME?.trim() || 'Store',
@@ -52,4 +52,4 @@ main()
     console.error(`[seed:admin] ${err.message}`);
     process.exitCode = 1;
   })
-  .finally(() => client.end());
+  .finally(() => pool.end());

@@ -6,6 +6,8 @@ describe('ProductService', () => {
   let service: ProductService;
   let httpMock: HttpTestingController;
 
+  const API = 'http://localhost:3000/api/v1/products';
+
   const mockProducts = [
     {
       id: 1,
@@ -50,18 +52,41 @@ describe('ProductService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('should fetch products from the backend API', () => {
-    service.getProducts().subscribe(products => {
-      expect(products.length).toBe(2);
-      expect(products[0].name).toBe('Product 1');
-      expect(products[1].name).toBe('Product 2');
-      expect(products[0].id).toBe(1);
-      expect(products[1].id).toBe(2);
+  it('should fetch one page of products with the total from the backend API', () => {
+    service.getProducts({ limit: 12, offset: 0 }).subscribe(page => {
+      expect(page.items.length).toBe(2);
+      expect(page.items[0].name).toBe('Product 1');
+      expect(page.items[1].id).toBe(2);
+      expect(page.total).toBe(30);
     });
 
-    const req = httpMock.expectOne('http://localhost:3000/products');
+    const req = httpMock.expectOne(r => r.url === API);
     expect(req.request.method).toBe('GET');
-    req.flush({ status: 200, message: 'ok', data: mockProducts });
+    expect(req.request.params.get('limit')).toBe('12');
+    expect(req.request.params.get('offset')).toBe('0');
+    expect(req.request.params.has('category')).toBeFalse();
+    expect(req.request.params.has('search')).toBeFalse();
+    req.flush({ status: 200, message: 'ok', data: mockProducts, meta: { limit: 12, offset: 0, total: 30 } });
+  });
+
+  it('should send the category and search filters to the server', () => {
+    service.getProducts({ limit: 12, offset: 24, category: 'Electronics', search: 'head' }).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === API);
+    expect(req.request.params.get('offset')).toBe('24');
+    expect(req.request.params.get('category')).toBe('Electronics');
+    expect(req.request.params.get('search')).toBe('head');
+    req.flush({ status: 200, message: 'ok', data: [], meta: { limit: 12, offset: 24, total: 0 } });
+  });
+
+  it('should fetch every category', () => {
+    service.getCategories().subscribe(categories => {
+      expect(categories).toEqual(['Electronics', 'Furniture']);
+    });
+
+    const req = httpMock.expectOne(`${API}/categories`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ status: 200, message: 'ok', data: ['Electronics', 'Furniture'] });
   });
 
   it('should find a product by ID', () => {
@@ -72,7 +97,7 @@ describe('ProductService', () => {
       expect(product.id).toBe(2);
     });
 
-    const req = httpMock.expectOne('http://localhost:3000/products/2');
+    const req = httpMock.expectOne(`${API}/2`);
     expect(req.request.method).toBe('GET');
     req.flush({ status: 200, message: 'ok', data: mockProducts[1] });
   });
