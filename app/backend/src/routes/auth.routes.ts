@@ -5,7 +5,6 @@ import { authLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
-// Endpoints that accept credentials or tokens get the tight auth rate limit
 router.post('/register',   authLimiter, auth.register);
 router.post('/login',      authLimiter, auth.login);
 router.post('/refresh',    authLimiter, auth.refresh);

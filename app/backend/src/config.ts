@@ -19,10 +19,7 @@ export const config = {
     .map((o) => o.trim())
     .filter(Boolean),
   port: parseInt(process.env.PORT || '3000', 10),
-  // Max JSON request body; the sample bulk product import is ~14 KB
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || '1mb',
-  // Requests per IP per 15 minutes across all routes (auth routes have their own stricter limit)
   apiRateLimit: parseInt(process.env.API_RATE_LIMIT || '500', 10),
-  // Days an audit-log row is kept; older rows are deleted at startup and then once a day (server.ts)
   auditLogRetentionDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '90', 10),
 };

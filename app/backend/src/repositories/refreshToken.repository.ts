@@ -6,7 +6,6 @@ import { StoredRefreshToken } from '../types/refreshToken.types';
 const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
 
 export class RefreshTokenRepository {
-  // Omitting familyId starts a new session; rotation passes the old token's family along
   async create(
     userId: number,
     expiresInMs: number,
@@ -33,7 +32,6 @@ export class RefreshTokenRepository {
     return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
-  // A token that was already exchanged once
   async findUsed(token: string): Promise<StoredRefreshToken | null> {
     const { rows } = await pool.query(
       'SELECT * FROM refresh_tokens WHERE token_hash = $1 AND used_at IS NOT NULL',
@@ -46,8 +44,6 @@ export class RefreshTokenRepository {
     await pool.query('DELETE FROM refresh_tokens WHERE family_id = $1', [familyId]);
   }
 
-  // Ends the session the token belongs to, including tokens already rotated out of it.
-  // Returns whose session it was, or null when the token matches none.
   async deleteFamilyOf(token: string): Promise<number | null> {
     const { rows } = await pool.query(
       'DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1) RETURNING user_id',

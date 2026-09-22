@@ -39,7 +39,6 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   if (!username || typeof username !== 'string' || !username.trim())
     throw new AppError('username is required', 400);
-  // No length rule here: accounts whose password predates the minimum must still be able to sign in
   if (!password || typeof password !== 'string')
     throw new AppError('password is required', 400);
 

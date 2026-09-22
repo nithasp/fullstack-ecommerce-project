@@ -156,7 +156,7 @@ describe('Product Repository', () => {
     const before = await repository.count();
     await expectAsync(repository.bulkCreate([
       { name: 'Bulk Row That Fits', price: 1 },
-      { name: 'Bulk Row Out Of Range', price: 1, stock: 1e12 }, // too large for the INTEGER column
+      { name: 'Bulk Row Out Of Range', price: 1, stock: 1e12 },
     ])).toBeRejected();
     expect(await repository.count()).toBe(before);
   });

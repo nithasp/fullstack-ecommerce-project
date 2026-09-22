@@ -73,7 +73,6 @@ export class OrderRepository {
     return rows.map((row) => this.mapRecentPurchaseRow(row));
   }
 
-  // Shared by index and count so a page and its total always describe the same rows
   private where(filters: OrderFilters, params: (string | number)[]): string {
     const conditions: string[] = [];
     if (filters.status) { params.push(filters.status); conditions.push(`status=$${params.length}`); }

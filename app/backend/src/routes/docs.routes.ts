@@ -3,19 +3,8 @@ import helmet from 'helmet';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Serves the OpenAPI spec and a Swagger UI for it, outside the versioned /api/v1 prefix.
- *
- * Both routes are public: the spec documents the API surface, not its data, and the UI is
- * only useful to someone who already has an account to authorize with. To take the docs
- * off a deployed instance, drop the `app.use(docsRoutes)` line in app.ts.
- */
-
-// Resolved from this file rather than the working directory, so it works from dist/ and
-// inside the container (both put openapi.yaml two levels up from the compiled route file)
 const SPEC_PATH = path.join(__dirname, '..', '..', 'openapi.yaml');
 
-// Read once and cache; the spec ships with the build and cannot change under a running server
 let specCache: string | null = null;
 
 const readSpec = (): string => {
@@ -74,13 +63,6 @@ const DOCS_INIT = `window.ui = SwaggerUIBundle({
 });
 `;
 
-/**
- * Readability overrides, loaded after swagger-ui.css so equal-specificity rules win.
- *
- * Swagger UI's stock type is small and tightly leaded, which the long prose in this spec
- * reads badly at. This mostly buys back size, line-height and contrast, sets a real system
- * font stack (the bundled CSS names fonts it never ships), and narrows the measure.
- */
 const DOCS_THEME = `:root {
   --doc-ink: #1c2333;
   --doc-ink-soft: #46506a;
@@ -99,12 +81,6 @@ body { margin: 0; background: var(--doc-canvas); }
 
 .swagger-ui { color: var(--doc-ink); -webkit-font-smoothing: antialiased; }
 
-/* Swagger UI names Titillium Web / Open Sans but ships no webfonts, so it lands on
-   whatever the OS substitutes — on Windows that is a condensed fallback that reads badly.
-   It also hardcodes font-family on selectors more specific than a theme layer can match
-   one by one, so the two stacks are forced here. These are the only !important rules in
-   this file, and they set nothing but font-family. Mono is declared second so it wins the
-   overlap on identifier elements. */
 .swagger-ui,
 .swagger-ui h1, .swagger-ui h2, .swagger-ui h3, .swagger-ui h4, .swagger-ui h5,
 .swagger-ui p, .swagger-ui li, .swagger-ui small, .swagger-ui a,
@@ -118,7 +94,6 @@ body { margin: 0; background: var(--doc-canvas); }
 .swagger-ui .response-col_description,
 .swagger-ui .scheme-container .schemes-title { font-family: var(--doc-sans) !important; }
 
-/* Mono only where the text is literally an identifier */
 .swagger-ui code,
 .swagger-ui pre,
 .swagger-ui .microlight,
@@ -132,10 +107,8 @@ body { margin: 0; background: var(--doc-canvas); }
 .swagger-ui .model,
 .swagger-ui .model * { font-family: var(--doc-mono) !important; }
 
-/* Stock is 1460px, wide enough that long lines lose their place */
 .swagger-ui .wrapper { max-width: 1180px; }
 
-/* ── Info block: the spec's long description ─────────────────────────────── */
 .swagger-ui .info { margin: 44px 0 30px; }
 .swagger-ui .info hgroup.main { margin-bottom: 18px; }
 .swagger-ui .info .title {
@@ -169,7 +142,6 @@ body { margin: 0; background: var(--doc-canvas); }
 .swagger-ui .info .description li { margin: 7px 0; }
 .swagger-ui .info .description li > p { margin: 0; }
 
-/* ── Markdown code, scoped so the response viewer keeps its own styling ─── */
 .swagger-ui .renderedMarkdown code,
 .swagger-ui .markdown code {
   background: var(--doc-code-bg);
@@ -199,7 +171,6 @@ body { margin: 0; background: var(--doc-canvas); }
   font-size: inherit;
 }
 
-/* ── Server picker + Authorize ───────────────────────────────────────────── */
 .swagger-ui .scheme-container {
   background: var(--doc-surface);
   box-shadow: none;
@@ -223,7 +194,6 @@ body { margin: 0; background: var(--doc-canvas); }
   font-size: 14px;
 }
 
-/* ── Tag sections ────────────────────────────────────────────────────────── */
 .swagger-ui .opblock-tag {
   font-size: 21px;
   font-weight: 650;
@@ -242,7 +212,6 @@ body { margin: 0; background: var(--doc-canvas); }
 }
 .swagger-ui .opblock-tag small { padding-left: 14px; }
 
-/* ── Operation rows ──────────────────────────────────────────────────────── */
 .swagger-ui .opblock {
   border-radius: 10px;
   margin: 0 0 10px;
@@ -282,7 +251,6 @@ body { margin: 0; background: var(--doc-canvas); }
   color: var(--doc-ink-faint);
 }
 
-/* ── Parameter + response tables ─────────────────────────────────────────── */
 .swagger-ui table thead tr th,
 .swagger-ui table thead tr td {
   font-size: 11.5px;
@@ -313,7 +281,6 @@ body { margin: 0; background: var(--doc-canvas); }
   color: var(--doc-ink-soft);
 }
 
-/* ── Schemas ─────────────────────────────────────────────────────────────── */
 .swagger-ui .model { font-size: 13px; line-height: 1.65; }
 .swagger-ui .model-title { font-size: 15px; font-weight: 650; }
 .swagger-ui .prop-type { font-size: 12.5px; }

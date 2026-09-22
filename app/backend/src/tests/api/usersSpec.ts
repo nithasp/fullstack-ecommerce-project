@@ -3,9 +3,9 @@ import app from '../../app';
 import { createAdmin } from '../support/admin';
 
 const request = supertest(app);
-let token: string;       // customer: own-account routes
+let token: string;
 let userId: number;
-let adminToken: string;  // admin: list/create users, create products
+let adminToken: string;
 
 describe('User Endpoints', () => {
   const customer = {
@@ -83,14 +83,12 @@ describe('User Endpoints', () => {
   });
 
   it('GET /users/:id recentPurchases should contain purchase data from completed orders', async () => {
-    // Create a product
     const productRes = await request
       .post('/api/v1/products')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Recent Purchase Item', price: 29.99, category: 'TestCat' });
     const productId = productRes.body.data.id;
 
-    // Create an order, add the product, then complete it
     const orderRes = await request
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
@@ -107,7 +105,6 @@ describe('User Endpoints', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ status: 'complete' });
 
-    // Now fetch user show and verify recentPurchases
     const response = await request
       .get(`/api/v1/users/${userId}`)
       .set('Authorization', `Bearer ${token}`)
@@ -210,7 +207,6 @@ describe('User Endpoints', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
 
-      // Looked up directly: GET /users is paginated, so the account may not be on its first page
       await request
         .get(`/api/v1/users/${otherUserId}`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -278,7 +274,6 @@ describe('User Endpoints', () => {
         .set('Authorization', `Bearer ${goneToken}`)
         .expect(200);
 
-      // The access token stays valid until it expires, but the account is gone
       const response = await request
         .get(`/api/v1/users/${goneUserId}`)
         .set('Authorization', `Bearer ${goneToken}`)

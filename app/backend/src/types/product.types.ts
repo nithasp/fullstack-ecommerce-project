@@ -35,6 +35,6 @@ export interface Product {
 }
 
 export interface ProductFilters {
-  category?: string; // exact match, case-insensitive
-  search?: string;   // substring of the name or description, case-insensitive
+  category?: string;
+  search?: string;
 }

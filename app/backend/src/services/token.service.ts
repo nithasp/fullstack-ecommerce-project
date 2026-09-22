@@ -9,12 +9,6 @@ import { AccessTokenPayload, TokenPair } from '../types/auth.types';
 import { AuditSource } from '../types/auditLog.types';
 import { PublicUser, USER_ROLES, UserRole } from '../types/user.types';
 
-/**
- * Every token rule lives here: signing and verifying access tokens, and issuing, rotating and
- * revoking refresh tokens. The auth controller and the auth middleware both call in, so what
- * makes a token valid is written once.
- */
-
 const refreshTokens = new RefreshTokenRepository();
 const users = new UserRepository();
 
@@ -30,19 +24,15 @@ export function signAccessToken(user: Pick<PublicUser, 'id' | 'role'>): string {
   });
 }
 
-// Throws jsonwebtoken's TokenExpiredError or JsonWebTokenError; the auth middleware maps them to 401 codes
 export function verifyAccessToken(token: string): { userId: number; role: UserRole } {
   const decoded = jwt.verify(token, config.tokenSecret, { algorithms: [JWT_ALGORITHM] }) as AccessTokenPayload;
   if (typeof decoded.userId !== 'number') throw new jwt.JsonWebTokenError('token has no numeric userId');
-  // Tokens issued before roles existed carry no role and are treated as customers
   const role = USER_ROLES.includes(decoded.role as UserRole) ? (decoded.role as UserRole) : 'customer';
   return { userId: decoded.userId, role };
 }
 
-// Login and registration start a new session, which is a new refresh-token family
 export async function issueTokens(user: PublicUser): Promise<TokenPair> {
   const refreshToken = await refreshTokens.create(user.id, config.refreshTokenExpiryMs);
-  // Fire-and-forget: clean up expired tokens without blocking the response
   refreshTokens.deleteExpired().catch(() => {});
   return { accessToken: signAccessToken(user), refreshToken };
 }
@@ -54,8 +44,7 @@ export async function issueTokens(user: PublicUser): Promise<TokenPair> {
  *
  * A token that was already exchanged and turns up again has been copied: one of its two holders
  * is not the user, and there is no telling which. So the whole session (every token in the
- * family) is revoked and the user signs in again. The replay is also written to the audit log,
- * with `source` saying where the request came from.
+ * family) is revoked and the user signs in again.
  */
 export async function rotateRefreshToken(token: string, source: AuditSource = {}): Promise<TokenPair> {
   const pair = await withTransaction(async (tx) => {
@@ -84,7 +73,6 @@ export async function rotateRefreshToken(token: string, source: AuditSource = {}
   throw new AppError(INVALID_REFRESH_TOKEN, 401);
 }
 
-// Logout: ends the session this refresh token belongs to and returns whose it was (null for no match)
 export async function revokeSession(refreshToken: string): Promise<number | null> {
   return refreshTokens.deleteFamilyOf(refreshToken);
 }

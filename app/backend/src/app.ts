@@ -8,7 +8,6 @@ import { recordActivity } from './middleware/audit';
 import { errorMiddleware, notFoundMiddleware } from './utils/response';
 import { config } from './config';
 
-// Every API route lives under this prefix, so a breaking change can ship as /api/v2 next to it
 export const API_PREFIX = '/api/v1';
 
 const app = express();
@@ -28,7 +27,6 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 app.use(docsRoutes);
-// recordActivity writes one audit-log row per signed-in request once its response has gone out
 app.use(API_PREFIX, recordActivity, apiRoutes);
 
 app.use(notFoundMiddleware);

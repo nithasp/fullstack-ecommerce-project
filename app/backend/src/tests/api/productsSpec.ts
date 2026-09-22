@@ -4,8 +4,8 @@ import { Product } from '../../types/product.types';
 import { createAdmin } from '../support/admin';
 
 const request = supertest(app);
-let token: string;       // customer: may read the catalog
-let adminToken: string;  // admin: may create, update and delete products
+let token: string;
+let adminToken: string;
 
 describe('Product Endpoints', () => {
   beforeAll(async () => {

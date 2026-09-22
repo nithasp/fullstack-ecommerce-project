@@ -16,7 +16,6 @@ const requireOwnOrder = async (req: Request, id: number): Promise<Order> => {
   return order;
 };
 
-// One page of a user's orders, optionally narrowed to a status
 const sendOrderPage = async (
   req: Request, res: Response, userId: number, status: OrderStatus | undefined, message: string
 ): Promise<void> => {

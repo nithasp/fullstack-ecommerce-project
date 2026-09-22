@@ -24,7 +24,6 @@ describe('Audit Log', () => {
   let alice: TestCustomer;
   let productId: number;
 
-  // A page of the log, read once the writes still in flight have landed
   const readLog = async (query: Record<string, string | number>): Promise<{ rows: AuditLog[]; total: number }> => {
     await flushAuditLog();
     const res = await request
@@ -35,10 +34,8 @@ describe('Audit Log', () => {
     return { rows: res.body.data, total: res.body.meta.total };
   };
 
-  // Every entry for one user, newest first
   const logsFor = async (userId: number): Promise<AuditLog[]> => (await readLog({ userId })).rows;
 
-  // A user's newest entry for one event
   const latest = async (userId: number, event: string): Promise<AuditLog> => {
     const row = (await logsFor(userId)).find((r) => r.event === event);
     if (!row) throw new Error(`no ${event} entry for user ${userId}`);
@@ -56,8 +53,6 @@ describe('Audit Log', () => {
       .expect(201);
     productId = product.body.data.id;
   });
-
-  // ── Access control ────────────────────────────────────────────────────────
 
   describe('GET /admin/audit-logs', () => {
     it('should reject requests without a token', async () => {
@@ -92,8 +87,6 @@ describe('Audit Log', () => {
       expect(attempt).toEqual(jasmine.objectContaining({ action: 'DELETE', userRole: 'admin', statusCode: 404 }));
     });
   });
-
-  // ── What gets recorded ────────────────────────────────────────────────────
 
   describe('Recording', () => {
     it('should record who added what to a cart, when, and the result', async () => {
@@ -182,12 +175,10 @@ describe('Audit Log', () => {
     });
   });
 
-  // ── Auth events ───────────────────────────────────────────────────────────
-
   describe('Auth events', () => {
     it('should record a registration and a login as one entry each', async () => {
       const carol = await registerCustomer('auditcarol');
-      await flushAuditLog(); // so the two rows get distinct, ordered timestamps
+      await flushAuditLog();
       await request.post('/api/v1/auth/login').send({ username: carol.username, password: carol.password }).expect(200);
 
       const rows = await logsFor(carol.userId);
@@ -242,8 +233,6 @@ describe('Audit Log', () => {
     });
   });
 
-  // ── Page views ────────────────────────────────────────────────────────────
-
   describe('POST /page-views', () => {
     it('should record the page as a PAGE_VIEW entry, in place of the API route', async () => {
       await request
@@ -294,8 +283,6 @@ describe('Audit Log', () => {
       expect(rows.every((r) => r.action === 'PAGE_VIEW')).toBeTrue();
     });
   });
-
-  // ── Filters ───────────────────────────────────────────────────────────────
 
   describe('Filters', () => {
     it('should filter by one or more types, in any letter case', async () => {
@@ -349,8 +336,6 @@ describe('Audit Log', () => {
       }
     });
   });
-
-  // ── History ───────────────────────────────────────────────────────────────
 
   describe('History', () => {
     it('should keep a user\'s entries after the account is deleted', async () => {

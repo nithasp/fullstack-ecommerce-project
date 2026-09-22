@@ -5,8 +5,6 @@ import { verifyAuthToken, requireAdmin } from '../middleware/auth';
 const router = Router();
 
 // One guard chain for the whole namespace: token → DB role check.
-// It belongs to this router, so it can't leak onto routes registered elsewhere.
-// Every request here lands in the audit log through recordActivity (app.ts), like any other route.
 router.use(verifyAuthToken, requireAdmin);
 
 router.get('/users',                admin.listUsers);

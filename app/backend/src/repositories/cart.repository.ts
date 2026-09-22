@@ -111,7 +111,6 @@ export class CartRepository {
     await db.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
   }
 
-  // Shared by getAll and count so a page and its total always describe the same rows
   private where(filters: { userId?: number }, params: number[]): string {
     if (!filters.userId) return '';
     params.push(filters.userId);
@@ -145,7 +144,6 @@ export class CartRepository {
       updatedAt: row.updated_at,
     };
 
-    // Joined product fields — only present when the query joins products
     if (row.product_name !== undefined)         item['productName']        = row.product_name;
     if (row.product_price !== undefined)        item['productPrice']       = row.product_price;
     if (row.product_category !== undefined)     item['productCategory']    = row.product_category;

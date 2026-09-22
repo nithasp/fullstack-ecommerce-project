@@ -3,10 +3,6 @@ import { TestAdmin, TestRequest } from '../../types/test.types';
 
 const users = new UserRepository();
 
-/**
- * Creates an admin account directly through the model (the same path `npm run seed:admin` uses —
- * the public API deliberately offers no way to self-register as admin) and logs it in.
- */
 export async function createAdmin(request: TestRequest, prefix = 'admin'): Promise<TestAdmin> {
   const username = `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const password = 'adminpass12345';

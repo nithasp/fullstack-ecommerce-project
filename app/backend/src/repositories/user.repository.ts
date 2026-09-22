@@ -6,8 +6,6 @@ import { Pagination } from '../types/pagination.types';
 const { BCRYPT_PASSWORD, SALT_ROUNDS } = process.env;
 const SAFE_FIELDS = 'id, first_name, last_name, username, role';
 
-// The async bcrypt calls run on libuv's thread pool. The Sync versions would stop the server
-// from answering any other request for the whole hash.
 const hashPassword = (password: string): Promise<string> =>
   bcrypt.hash(password + BCRYPT_PASSWORD, parseInt(SALT_ROUNDS as string));
 
@@ -38,7 +36,6 @@ export class UserRepository {
     return this.mapRow(rows[0]);
   }
 
-  // With nothing to change it returns the current row, so it never builds an empty SET clause
   async update(id: number, changes: UserUpdate): Promise<PublicUser | null> {
     const fields: string[] = [];
     const values: (string | number)[] = [];

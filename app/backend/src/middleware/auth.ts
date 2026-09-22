@@ -4,7 +4,6 @@ import { verifyAccessToken } from '../services/token.service';
 
 const users = new UserRepository();
 
-// Returns distinct error codes (no_token / token_expired / token_invalid) for frontend token-refresh logic
 export const verifyAuthToken = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -12,7 +11,6 @@ export const verifyAuthToken = (req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  // Only the Bearer scheme is accepted (case-insensitive, per RFC 7235)
   const [scheme, token] = authHeader.split(' ');
   if (scheme?.toLowerCase() !== 'bearer' || !token) {
     res.status(401).json({ error: 'Invalid token.', code: 'token_invalid' });

@@ -23,13 +23,10 @@ const pool = new Pool(
       }
 );
 
-// Anything that can run a query: the pool, or a client checked out for a transaction.
-// Repository methods that take one can be composed by a service into a single transaction.
 export interface Queryable {
   query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>>;
 }
 
-// Runs fn on one pooled client between BEGIN and COMMIT, rolling back if it throws
 export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Promise<T> {
   const tx = await pool.connect();
   try {

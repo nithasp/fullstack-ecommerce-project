@@ -2,22 +2,12 @@ import { NextFunction, Request, Response } from 'express';
 import { recordEvent, requestSource } from '../services/audit.service';
 import { AuditAction, AuditAnnotation, AuditDetails, NewAuditLog } from '../types/auditLog.types';
 
-/**
- * The activity log. Every request a signed-in user makes under /api/v1 becomes one audit_logs
- * row, written after the response has gone out, so recording never slows a request or fails it.
- *
- * The HTTP method gives each row its type (GET → READ, POST → CREATE, PUT → UPDATE, DELETE →
- * DELETE) and the table below gives it a readable event name. Requests with no signed-in user
- * are not recorded, except where a handler names the event itself with auditAs(): the auth
- * routes, where nobody is signed in yet when the request starts.
- */
-
 type DetailsFn = (req: Request) => AuditDetails | undefined;
 
 interface Rule {
   method: string;
   pattern: RegExp;
-  event: string | null; // null: the route is deliberately not recorded
+  event: string | null;
   details?: DetailsFn;
 }
 
@@ -25,17 +15,13 @@ const METHOD_ACTIONS: Record<string, AuditAction> = {
   GET: 'READ', POST: 'CREATE', PUT: 'UPDATE', PATCH: 'UPDATE', DELETE: 'DELETE',
 };
 
-// The event name for a route missing from the table below
 const UNNAMED_EVENT = 'api.request';
 
-// Details are for reading at a glance, so a long string is cut short
 const MAX_DETAIL_LENGTH = 100;
 
-// ── Details ──────────────────────────────────────────────────────────────────
 // A row keeps small, non-secret facts only: ids, quantities, statuses. Never a password,
 // a token or a whole request body.
 
-// A plain number, boolean or non-blank string; anything else is left out
 function safeValue(val: unknown): string | number | boolean | undefined {
   if (typeof val === 'number') return Number.isFinite(val) ? val : undefined;
   if (typeof val === 'boolean') return val;
@@ -55,10 +41,8 @@ function copy(source: Record<string, unknown>, keys: string[]): AuditDetails | u
   return Object.keys(details).length ? details : undefined;
 }
 
-// Copies these body fields, e.g. the product and quantity added to a cart
 const pick = (...keys: string[]): DetailsFn => (req) => copy(bodyOf(req), keys);
 
-// Copies these query-string values, e.g. a product search
 const fromQuery = (...keys: string[]): DetailsFn => (req) => copy(req.query, keys);
 
 // Names the fields an update sent, never their values: one of them may be a password
@@ -68,7 +52,6 @@ const changed = (...keys: string[]): DetailsFn => (req) => {
   return fields.length ? { changed: fields } : undefined;
 };
 
-// How many items a checkout (body.items) or a bulk import (the body itself) carried
 const itemCount = (field?: string): DetailsFn => (req) => {
   const items = field ? bodyOf(req)[field] : req.body;
   return Array.isArray(items) ? { items: items.length } : undefined;
@@ -81,9 +64,6 @@ const PRODUCT_FIELDS = [
   'overallRating', 'stock', 'isActive', 'shopId', 'shopName',
 ];
 
-// ── Event names ──────────────────────────────────────────────────────────────
-
-// ':param' matches one path segment. Express routing ignores letter case and a trailing slash, so this does too.
 const rule = (method: string, route: string, event: string | null, details?: DetailsFn): Rule => ({
   method,
   pattern: new RegExp(`^${route.replace(/:\w+/g, '[^/]+')}/?$`, 'i'),
@@ -91,11 +71,8 @@ const rule = (method: string, route: string, event: string | null, details?: Det
   details,
 });
 
-// Every route under /api/v1, as written in src/routes. The first match wins, so fixed paths sit
-// above the ':id' routes that would otherwise swallow them, in the same order the routers use.
 const RULES: Rule[] = [
-  // Auth: login, logout and registration are named by the auth controller
-  rule('GET',    '/auth/me',                       null), // the profile lookup a client makes after signing in
+  rule('GET',    '/auth/me',                       null),
 
   rule('GET',    '/users',                         'user.list_viewed'),
   rule('POST',   '/users',                         'user.created', pick('username')),
@@ -160,24 +137,14 @@ const RULES: Rule[] = [
   rule('GET',    '/admin/addresses/:id',           'admin.address_viewed'),
   rule('PUT',    '/admin/addresses/:id',           'admin.address_updated', changed(...ADDRESS_FIELDS)),
   rule('DELETE', '/admin/addresses/:id',           'admin.address_deleted'),
-  // Reading the log is left out, or every refresh of the admin page would add rows to it
   rule('GET',    '/admin/audit-logs',              null),
 
-  // Its controller records an accepted report as a PAGE_VIEW; this name only shows on a report it refused
   rule('POST',   '/page-views',                    'page.view_rejected'),
 ];
-
-// ── Recording ────────────────────────────────────────────────────────────────
 
 const findRule = (method: string, path: string): Rule | undefined =>
   RULES.find((r) => r.method === method && r.pattern.test(path));
 
-/**
- * Names the event for the current request, for the cases the route table can't handle: an
- * auth route, where nobody is signed in when the request starts, a login that can go either
- * way, or a page view, which records the page's path instead of its own. recordActivity still
- * writes the row once the response is sent, with its real status.
- */
 export const auditAs = (res: Response, annotation: AuditAnnotation): void => {
   res.locals.audit = annotation;
 };
@@ -190,7 +157,6 @@ function fromAnnotation(req: Request, annotation: AuditAnnotation): NewAuditLog 
   };
 }
 
-// The row for an ordinary request, or null when it isn't recorded
 function fromRoute(req: Request, path: string): NewAuditLog | null {
   const action = METHOD_ACTIONS[req.method];
   if (!req.user || !action) return null;
@@ -208,7 +174,6 @@ function fromRoute(req: Request, path: string): NewAuditLog | null {
 }
 
 export const recordActivity = (req: Request, res: Response, next: NextFunction) => {
-  // Read now, relative to the /api/v1 mount point: the routers below rewrite req.url as they go
   const path = req.path;
 
   res.on('finish', () => {

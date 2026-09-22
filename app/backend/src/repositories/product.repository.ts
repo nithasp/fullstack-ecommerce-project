@@ -23,7 +23,6 @@ export class ProductRepository {
     return parseInt(rows[0].count, 10);
   }
 
-  // Every distinct category, so a client can offer them all without loading the whole catalog
   async categories(): Promise<string[]> {
     const { rows } = await pool.query(
       `SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category <> '' ORDER BY category ASC`
@@ -55,7 +54,6 @@ export class ProductRepository {
     return this.mapRow(rows[0]);
   }
 
-  // With nothing to change it returns the current row, so it never builds an empty SET clause
   async update(id: number, product: Partial<Product>): Promise<Product | null> {
     const fields: string[] = [];
     const values: (string | number | boolean)[] = [];
@@ -90,7 +88,6 @@ export class ProductRepository {
     return rows[0] ? this.mapRow(rows[0]) : null;
   }
 
-  // All or nothing: a row the database rejects rolls back the rows inserted before it
   async bulkCreate(products: Product[]): Promise<Product[]> {
     return withTransaction(async (tx) => {
       const created: Product[] = [];
@@ -109,7 +106,6 @@ export class ProductRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
-  // Shared by index and count so a page and its total always describe the same rows
   private where(filters: ProductFilters, params: (string | number)[]): string {
     const conditions: string[] = [];
     if (filters.category) {
@@ -117,7 +113,6 @@ export class ProductRepository {
       conditions.push(`LOWER(category) = LOWER($${params.length})`);
     }
     if (filters.search) {
-      // STRPOS rather than LIKE, so % and _ typed by a user are matched literally
       params.push(filters.search.toLowerCase());
       conditions.push(
         `(STRPOS(LOWER(name), $${params.length}) > 0 OR STRPOS(LOWER(COALESCE(description, '')), $${params.length}) > 0)`

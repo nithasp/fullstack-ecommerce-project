@@ -1,12 +1,3 @@
-/**
- * Bootstraps the first admin account from environment variables.
- *
- *   ADMIN_USERNAME=admin ADMIN_PASSWORD=<long password> npm run seed:admin
- *
- * Self-registration can never create an admin, so this script (or an existing admin using
- * PUT /api/v1/admin/users/:id/role) is the only way an account gets the admin role.
- * Running it again is safe: an existing account with that username is promoted, never recreated.
- */
 import dotenv from 'dotenv';
 dotenv.config();
 

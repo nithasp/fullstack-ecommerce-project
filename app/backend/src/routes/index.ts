@@ -8,7 +8,6 @@ import addressRoutes from './addresses.routes';
 import adminRoutes from './admin.routes';
 import pageViewRoutes from './pageViews.routes';
 
-// Everything under the versioned prefix; app.ts mounts this at /api/v1
 const api = Router();
 
 api.use('/auth',       authRoutes);

@@ -7,7 +7,6 @@ const router = Router();
 // Catalog reads are open to any signed-in user; catalog writes are an admin function (OWASP API5)
 router.use(verifyAuthToken);
 
-// Fixed paths before /:id, which would otherwise swallow "popular" and "categories" as an id
 router.get('/',           products.index);
 router.get('/popular',    products.mostPopular);
 router.get('/categories', products.categories);

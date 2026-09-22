@@ -8,9 +8,6 @@ import { UserRole } from '../types/user.types';
 const clip = (val: string | null | undefined, max: number): string | null => (val ? val.slice(0, max) : null);
 
 export class AuditLogRepository {
-  // Whichever of user_id and username the caller doesn't know is looked up from the other,
-  // so a failed login still links to the account whose name was typed. A row written after
-  // its user is gone (the one for deleting your own account) keeps the id but finds no name.
   async create(entry: NewAuditLog): Promise<void> {
     await pool.query(
       `INSERT INTO audit_logs
@@ -36,7 +33,6 @@ export class AuditLogRepository {
     );
   }
 
-  // Newest first; the id breaks ties between rows written in the same instant
   async index(filters: AuditLogFilters, page: Pagination): Promise<AuditLog[]> {
     const params: unknown[] = [];
     let sql = `SELECT * FROM audit_logs${this.where(filters, params)}`;
@@ -52,7 +48,6 @@ export class AuditLogRepository {
     return parseInt(rows[0].count, 10);
   }
 
-  // The retention cleanup; returns how many rows were deleted
   async deleteOlderThan(days: number): Promise<number> {
     const { rowCount } = await pool.query(
       `DELETE FROM audit_logs WHERE created_at < NOW() - $1::int * INTERVAL '1 day'`,
@@ -61,12 +56,10 @@ export class AuditLogRepository {
     return rowCount ?? 0;
   }
 
-  // Shared by index and count so a page and its total always describe the same rows
   private where(filters: AuditLogFilters, params: unknown[]): string {
     const conditions: string[] = [];
     if (filters.userId) { params.push(filters.userId); conditions.push(`user_id = $${params.length}`); }
     if (filters.username) {
-      // STRPOS rather than LIKE, so % and _ typed into the filter are matched literally
       params.push(filters.username.toLowerCase());
       conditions.push(`STRPOS(LOWER(username), $${params.length}) > 0`);
     }
@@ -80,7 +73,7 @@ export class AuditLogRepository {
 
   private mapRow(row: Record<string, unknown>): AuditLog {
     return {
-      id: Number(row.id), // BIGSERIAL, which pg returns as a string
+      id: Number(row.id),
       createdAt: row.created_at as Date,
       userId: row.user_id as number | null,
       username: row.username as string | null,

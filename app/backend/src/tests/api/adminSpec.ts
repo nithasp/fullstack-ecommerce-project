@@ -36,8 +36,6 @@ describe('Admin Endpoints', () => {
     productId = productRes.body.data.id;
   });
 
-  // ── Access control ────────────────────────────────────────────────────────
-
   describe('Access control', () => {
     it('should reject requests without a token', async () => {
       const res = await request.get('/api/v1/admin/users').expect(401);
@@ -53,7 +51,6 @@ describe('Admin Endpoints', () => {
     });
 
     it('should return 403 for a token that claims admin but whose account is not an admin', async () => {
-      // A forged-looking claim is never trusted on admin routes: the role is re-read from the database
       const forged = jwt.sign({ userId: alice.userId, role: 'admin' }, TOKEN_SECRET, { expiresIn: '5m' });
       await request
         .get('/api/v1/admin/users')
@@ -101,8 +98,6 @@ describe('Admin Endpoints', () => {
       await request.get('/api/v1/admin/users').set('Authorization', `Bearer ${alice.token}`).expect(403);
     });
   });
-
-  // ── Users ─────────────────────────────────────────────────────────────────
 
   describe('Users', () => {
     let createdUserId: number;
@@ -200,10 +195,8 @@ describe('Admin Endpoints', () => {
         .expect(200);
       expect(res.body.data.role).toBe('admin');
 
-      // The session issued before the change can no longer be renewed
       await request.post('/api/v1/auth/refresh').send({ refreshToken: bob.refreshToken }).expect(401);
 
-      // A fresh login carries the new role
       const login = await request.post('/api/v1/auth/login').send({ username: bob.username, password: bob.password }).expect(200);
       expect(login.body.data.user.role).toBe('admin');
       await request.get('/api/v1/admin/users').set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(200);
@@ -217,10 +210,8 @@ describe('Admin Endpoints', () => {
         .send({ role: 'customer' })
         .expect(200);
 
-      // bob.token still says "admin" inside the JWT, but admin routes re-check the database
       await request.get('/api/v1/admin/users').set('Authorization', `Bearer ${bob.token}`).expect(403);
 
-      // Customer routes trust the short-lived claim until it expires, so a fresh login is needed for a customer token
       const login = await request.post('/api/v1/auth/login').send({ username: bob.username, password: bob.password }).expect(200);
       expect(login.body.data.user.role).toBe('customer');
       bob.token = login.body.data.accessToken;
@@ -264,8 +255,6 @@ describe('Admin Endpoints', () => {
       expect(res.body.data.id).toBe(alice.userId);
     });
   });
-
-  // ── Orders ────────────────────────────────────────────────────────────────
 
   describe('Orders', () => {
     let orderId: number;
@@ -329,7 +318,6 @@ describe('Admin Endpoints', () => {
         .expect(200);
       expect(res.body.data.status).toBe('complete');
 
-      // The owner sees the change through the customer routes
       const own = await request.get(`/api/v1/orders/${orderId}`).set('Authorization', `Bearer ${alice.token}`).expect(200);
       expect(own.body.data.status).toBe('complete');
     });
@@ -350,8 +338,6 @@ describe('Admin Endpoints', () => {
       await request.get(`/api/v1/admin/orders/${orderId}`).set('Authorization', `Bearer ${admin.token}`).expect(404);
     });
   });
-
-  // ── Carts ─────────────────────────────────────────────────────────────────
 
   describe('Carts', () => {
     let cartItemId: number;
@@ -397,7 +383,6 @@ describe('Admin Endpoints', () => {
         .expect(200);
       expect(updated.body.data.quantity).toBe(5);
 
-      // The owner sees the change
       const own = await request.get('/api/v1/cart').set('Authorization', `Bearer ${alice.token}`).expect(200);
       expect(own.body.data.find((i: { id: number }) => i.id === cartItemId).quantity).toBe(5);
 
@@ -417,8 +402,6 @@ describe('Admin Endpoints', () => {
       expect(own.body.data).toEqual([]);
     });
   });
-
-  // ── Addresses ─────────────────────────────────────────────────────────────
 
   describe('Addresses', () => {
     let addressId: number;
@@ -459,7 +442,6 @@ describe('Admin Endpoints', () => {
         .expect(200);
       expect(updated.body.data.city).toBe('Shelbyville');
 
-      // The owner sees the change through the customer routes
       const own = await request.get(`/api/v1/addresses/${addressId}`).set('Authorization', `Bearer ${alice.token}`).expect(200);
       expect(own.body.data.city).toBe('Shelbyville');
 
@@ -473,8 +455,6 @@ describe('Admin Endpoints', () => {
     });
   });
 
-  // ── Error handling ────────────────────────────────────────────────────────
-
   describe('Error handling', () => {
     it('should return a clean 400 for malformed JSON', async () => {
       const res = await request
@@ -486,8 +466,6 @@ describe('Admin Endpoints', () => {
       expect(res.body.message).toBe('Request body must be valid JSON');
     });
   });
-
-  // ── Rules shared with the customer routes ─────────────────────────────────
 
   describe('Shared rules', () => {
     it('PUT /admin/users/:id should reject a password shorter than 8 characters', async () => {

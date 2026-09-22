@@ -4,7 +4,6 @@ import { config } from '../config';
 
 const WINDOW_MS = 15 * 60 * 1000;
 
-// Both limiters are switched off under ENV=test so the suite can sign in as often as it needs
 const isTest = process.env.ENV === 'test';
 const passThrough: RequestHandler = (_req, _res, next) => next();
 
@@ -19,7 +18,6 @@ export const authLimiter: RequestHandler = isTest
       message: { error: 'Too many requests. Please wait a moment and try again.', code: 'rate_limited' },
     });
 
-// Every other route gets a looser per-IP ceiling (OWASP API4)
 export const apiLimiter: RequestHandler = isTest
   ? passThrough
   : rateLimit({

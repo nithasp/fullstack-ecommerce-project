@@ -86,7 +86,6 @@ export function parseCartItemPayload(body: Record<string, unknown>): UpsertCartI
   };
 }
 
-// Unknown or missing labels fall back to 'home'
 export function parseAddressLabel(val: unknown): AddressLabel {
   return ADDRESS_LABELS.includes(val as AddressLabel) ? val as AddressLabel : 'home';
 }
@@ -107,7 +106,6 @@ export function parseNewAddress(body: Record<string, unknown>): AddressForm {
   };
 }
 
-// Only the fields present in the body; a blank phone clears the stored one
 export function parseAddressUpdate(body: Record<string, unknown>): Partial<AddressForm> {
   const form: Partial<AddressForm> = {};
   if (body.fullName  !== undefined) form.fullName  = requireString(body.fullName, 'fullName');
@@ -119,7 +117,6 @@ export function parseAddressUpdate(body: Record<string, unknown>): Partial<Addre
   return form;
 }
 
-// A single optional query-string value; blank counts as absent
 function optionalQueryString(val: unknown, label: string): string | undefined {
   if (val === undefined) return undefined;
   if (typeof val !== 'string') throw new AppError(`${label} must be a single value`, 400);
@@ -135,7 +132,6 @@ export function parseProductFilters(query: Record<string, unknown>): ProductFilt
   };
 }
 
-// One or more comma-separated types, e.g. "CREATE,DELETE"; letter case doesn't matter
 function parseAuditActions(val: string): AuditAction[] {
   const actions = [...new Set(val.split(',').map((a) => a.trim().toUpperCase()).filter(Boolean))];
   if (!actions.length || actions.some((a) => !AUDIT_ACTIONS.includes(a as AuditAction)))
@@ -155,7 +151,6 @@ function parseDate(val: string, label: string): Date {
   return date;
 }
 
-// Filters for the admin audit-log list, all optional. `to` is exclusive, so a day ends where the next begins.
 export function parseAuditLogFilters(query: Record<string, unknown>): AuditLogFilters {
   const userId = optionalQueryString(query.userId, 'userId');
   const action = optionalQueryString(query.action, 'action');
@@ -173,7 +168,6 @@ export function parseAuditLogFilters(query: Record<string, unknown>): AuditLogFi
   };
 }
 
-// A page the frontend reports. The path is the page's own, without a query string, e.g. /products/5.
 export function parsePageView(body: Record<string, unknown>): PageView {
   const path = requireString(body.path, 'path');
   if (path.length > MAX_PAGE_PATH_LENGTH || !/^\/[^\s?#]*$/.test(path))

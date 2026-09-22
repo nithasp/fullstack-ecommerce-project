@@ -16,8 +16,6 @@ describe('Auth Endpoints', () => {
   let accessToken: string;
   let refreshToken: string;
 
-  // ── Register ──────────────────────────────────────────────────────────────
-
   describe('POST /auth/register', () => {
     it('should register a new user and return tokens', async () => {
       const res = await request
@@ -31,11 +29,9 @@ describe('Auth Endpoints', () => {
       expect(res.body.data.accessToken).toBeDefined();
       expect(res.body.data.refreshToken).toBeDefined();
 
-      // Access token should be a valid JWT with userId
       const decoded = jwt.verify(res.body.data.accessToken, TOKEN_SECRET) as { userId: number };
       expect(decoded.userId).toBe(res.body.data.user.id);
 
-      // Refresh token should be an opaque string (not a JWT)
       expect(res.body.data.refreshToken.split('.').length).not.toBe(3);
 
       accessToken = res.body.data.accessToken;
@@ -69,8 +65,6 @@ describe('Auth Endpoints', () => {
       expect(res.body.message).toContain('at least 8 characters');
     });
   });
-
-  // ── Login ─────────────────────────────────────────────────────────────────
 
   describe('POST /auth/login', () => {
     it('should login with valid credentials and return tokens', async () => {
@@ -122,8 +116,6 @@ describe('Auth Endpoints', () => {
     });
   });
 
-  // ── Refresh (with rotation) ───────────────────────────────────────────────
-
   describe('POST /auth/refresh', () => {
     it('should return a new access token and rotate the refresh token', async () => {
       const res = await request
@@ -133,15 +125,13 @@ describe('Auth Endpoints', () => {
 
       expect(res.body.data.accessToken).toBeDefined();
       expect(res.body.data.refreshToken).toBeDefined();
-      expect(res.body.data.refreshToken).not.toBe(refreshToken); // rotated
+      expect(res.body.data.refreshToken).not.toBe(refreshToken);
 
-      // Old refresh token should now be invalid
       await request
         .post('/api/v1/auth/refresh')
         .send({ refreshToken })
         .expect(401);
 
-      // Update tokens for subsequent tests
       accessToken = res.body.data.accessToken;
       refreshToken = res.body.data.refreshToken;
     });
@@ -163,11 +153,8 @@ describe('Auth Endpoints', () => {
     });
   });
 
-  // ── Logout ────────────────────────────────────────────────────────────────
-
   describe('POST /auth/logout', () => {
     it('should invalidate the refresh token on logout', async () => {
-      // Login to get a fresh session
       const loginRes = await request
         .post('/api/v1/auth/login')
         .send({ username: testUser.username, password: testUser.password })
@@ -176,13 +163,11 @@ describe('Auth Endpoints', () => {
       const sessionRefreshToken = loginRes.body.data.refreshToken;
       accessToken = loginRes.body.data.accessToken;
 
-      // Logout
       await request
         .post('/api/v1/auth/logout')
         .send({ refreshToken: sessionRefreshToken })
         .expect(200);
 
-      // Refresh with the same token should fail
       await request
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: sessionRefreshToken })
@@ -197,11 +182,8 @@ describe('Auth Endpoints', () => {
     });
   });
 
-  // ── Logout All ────────────────────────────────────────────────────────────
-
   describe('POST /auth/logout-all', () => {
     it('should revoke all sessions for the current user', async () => {
-      // Create two sessions
       const login1 = await request
         .post('/api/v1/auth/login')
         .send({ username: testUser.username, password: testUser.password });
@@ -209,13 +191,11 @@ describe('Auth Endpoints', () => {
         .post('/api/v1/auth/login')
         .send({ username: testUser.username, password: testUser.password });
 
-      // Logout all using session 1's access token
       await request
         .post('/api/v1/auth/logout-all')
         .set('Authorization', `Bearer ${login1.body.data.accessToken}`)
         .expect(200);
 
-      // Both refresh tokens should now be invalid
       await request
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: login1.body.data.refreshToken })
@@ -233,8 +213,6 @@ describe('Auth Endpoints', () => {
         .expect(401);
     });
   });
-
-  // ── Protected route (GET /auth/me) ────────────────────────────────────────
 
   describe('GET /auth/me', () => {
     beforeAll(async () => {
@@ -260,8 +238,6 @@ describe('Auth Endpoints', () => {
     });
   });
 
-  // ── Middleware error codes ────────────────────────────────────────────────
-
   describe('Auth middleware – error codes', () => {
     it('should return code "no_token" when no Authorization header', async () => {
       const res = await request.get('/api/v1/users').expect(401);
@@ -284,7 +260,6 @@ describe('Auth Endpoints', () => {
         { expiresIn: '0s' }
       );
 
-      // Small delay to ensure the token is past its expiry
       await new Promise((resolve) => setTimeout(resolve, 1100));
 
       const res = await request
@@ -339,8 +314,6 @@ describe('Auth Endpoints', () => {
     });
   });
 
-  // ── Refresh-token reuse ───────────────────────────────────────────────────
-
   describe('Refresh-token reuse detection', () => {
     const newSession = async (): Promise<string> => {
       const res = await request
@@ -355,9 +328,7 @@ describe('Auth Endpoints', () => {
       const rotated = await request.post('/api/v1/auth/refresh').send({ refreshToken: original }).expect(200);
       const successor = rotated.body.data.refreshToken;
 
-      // The old token is replayed: it is refused...
       await request.post('/api/v1/auth/refresh').send({ refreshToken: original }).expect(401);
-      // ...and the token that replaced it is revoked too, cutting off whoever holds it
       await request.post('/api/v1/auth/refresh').send({ refreshToken: successor }).expect(401);
     });
 

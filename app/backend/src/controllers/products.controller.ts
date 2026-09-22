@@ -9,7 +9,6 @@ import {
 
 const products = new ProductRepository();
 
-// Shared by create and bulk create; `prefix` names the item in error messages, e.g. "products[2]."
 function parseNewProduct(item: Record<string, unknown>, prefix = ''): Product {
   const name = requireString(item.name, `${prefix}name`);
 

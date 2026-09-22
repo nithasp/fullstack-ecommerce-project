@@ -109,7 +109,6 @@ export class AddressRepository {
     });
   }
 
-  // Shared by getAll and count so a page and its total always describe the same rows
   private where(filters: { userId?: number }, params: number[]): string {
     if (!filters.userId) return '';
     params.push(filters.userId);

@@ -17,7 +17,7 @@ export interface Address {
 
 export interface AddressForm {
   fullName: string;
-  phone?: string | null; // null clears the stored phone on update
+  phone?: string | null;
   address: string;
   city: string;
   label: AddressLabel;

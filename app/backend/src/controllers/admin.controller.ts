@@ -15,8 +15,7 @@ import {
 
 /**
  * Admin API — every route here requires a valid access token whose account is an admin
- * (re-checked against the database on each request). Like every signed-in request, each
- * call is written to the audit log.
+ * (re-checked against the database on each request).
  *
  * Unlike the customer routes, these are not scoped to the token user: an admin can list and
  * manage users, orders, carts and addresses belonging to any account, and read the audit log.
@@ -38,8 +37,6 @@ const optionalUserIdFilter = (req: Request): number | undefined => {
   const raw = req.query.userId as string | undefined;
   return raw ? parseId(raw, 'userId filter') : undefined;
 };
-
-// ── Users ────────────────────────────────────────────────────────────────────
 
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
   const page = parsePagination(req.query);
@@ -107,8 +104,6 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, deleted, 'User deleted.');
 });
 
-// ── Orders ───────────────────────────────────────────────────────────────────
-
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status !== undefined ? parseOrderStatus(req.query.status, 'status filter') : undefined;
   const filters = { status, userId: optionalUserIdFilter(req) };
@@ -163,8 +158,6 @@ export const addOrderProduct = asyncHandler(async (req: Request, res: Response) 
   sendSuccess(res, await orders.addProduct({ orderId, productId, quantity }), 'Product added to order.');
 });
 
-// ── Carts ────────────────────────────────────────────────────────────────────
-
 export const listCartItems = asyncHandler(async (req: Request, res: Response) => {
   const filters = { userId: optionalUserIdFilter(req) };
   const page = parsePagination(req.query);
@@ -213,8 +206,6 @@ export const deleteCartItem = asyncHandler(async (req: Request, res: Response) =
   sendSuccess(res, deleted, 'Cart item removed.');
 });
 
-// ── Addresses ────────────────────────────────────────────────────────────────
-
 export const listAddresses = asyncHandler(async (req: Request, res: Response) => {
   const filters = { userId: optionalUserIdFilter(req) };
   const page = parsePagination(req.query);
@@ -238,7 +229,6 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, await addresses.create(userId, parseNewAddress(req.body)), 'Address created.', 201);
 });
 
-// The owner is looked up from the address itself so the default-address bookkeeping stays per user
 export const updateAddress = asyncHandler(async (req: Request, res: Response) => {
   const id = parseId(req.params.id, 'address id');
   const existing = await requireAddress(id);
@@ -259,9 +249,6 @@ export const deleteAddress = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, deleted, 'Address deleted.');
 });
 
-// ── Audit log ────────────────────────────────────────────────────────────────
-
-// Newest first. Entries can only be read: the server deletes them once they pass the retention period.
 export const listAuditLogs = asyncHandler(async (req: Request, res: Response) => {
   const filters = parseAuditLogFilters(req.query);
   const page = parsePagination(req.query);
