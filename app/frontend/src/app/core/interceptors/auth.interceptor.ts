@@ -1,4 +1,5 @@
 import {
+  HttpContextToken,
   HttpErrorResponse,
   HttpHandlerFn,
   HttpInterceptorFn,
@@ -20,6 +21,9 @@ import { NotificationService } from '../services/ui/notification.service';
 
 let isRefreshing = false;
 const refreshTokenSubject = new BehaviorSubject<string | null>(null);
+
+// Marks a background call (a page-view report) whose failure the user shouldn't be told about
+export const QUIET_ERRORS = new HttpContextToken<boolean>(() => false);
 
 function addToken(req: HttpRequest<unknown>, token: string): HttpRequest<unknown> {
   return req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
@@ -59,6 +63,11 @@ function handleError(
   router: Router,
   notification: NotificationService
 ) {
+  // A background call fails without a toast; an expired token is still refreshed for it
+  if (req.context.get(QUIET_ERRORS) && error.error?.code !== 'token_expired') {
+    return throwError(() => new Error(extractMessage(error)));
+  }
+
   if (error.status === 0) {
     notification.error('Cannot reach the server. Please check your connection.');
     return throwError(() => new Error('Cannot reach the server.'));

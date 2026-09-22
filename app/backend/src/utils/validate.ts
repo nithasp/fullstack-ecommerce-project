@@ -5,11 +5,14 @@ import { ORDER_STATUSES, OrderStatus } from '../types/order.types';
 import { ADDRESS_LABELS, AddressForm, AddressLabel } from '../types/address.types';
 import { UpsertCartItemPayload } from '../types/cart.types';
 import { ProductFilters } from '../types/product.types';
+import { AUDIT_ACTIONS, AUDIT_RESULTS, AuditAction, AuditLogFilters, AuditResult, PageView } from '../types/auditLog.types';
 
 export const PAGINATION_DEFAULT_LIMIT = 50;
 export const PAGINATION_MAX_LIMIT = 100;
 export const MIN_PASSWORD_LENGTH = 8;
 const MAX_QUERY_STRING_LENGTH = 100;
+const MAX_PAGE_PATH_LENGTH = 255;
+const MAX_PAGE_NAME_LENGTH = 60;
 
 export function parseId(val: string, label: string): number {
   const id = parseInt(val);
@@ -130,6 +133,57 @@ export function parseProductFilters(query: Record<string, unknown>): ProductFilt
     category: optionalQueryString(query.category, 'category'),
     search:   optionalQueryString(query.search,   'search'),
   };
+}
+
+// One or more comma-separated types, e.g. "CREATE,DELETE"; letter case doesn't matter
+function parseAuditActions(val: string): AuditAction[] {
+  const actions = [...new Set(val.split(',').map((a) => a.trim().toUpperCase()).filter(Boolean))];
+  if (!actions.length || actions.some((a) => !AUDIT_ACTIONS.includes(a as AuditAction)))
+    throw new AppError(`action must be one or more of: ${AUDIT_ACTIONS.join(', ')}`, 400);
+  return actions as AuditAction[];
+}
+
+function parseAuditResult(val: string): AuditResult {
+  if (!AUDIT_RESULTS.includes(val as AuditResult))
+    throw new AppError(`result must be one of: ${AUDIT_RESULTS.join(', ')}`, 400);
+  return val as AuditResult;
+}
+
+function parseDate(val: string, label: string): Date {
+  const date = new Date(val);
+  if (isNaN(date.getTime())) throw new AppError(`${label} must be a date, e.g. 2026-09-22T00:00:00Z`, 400);
+  return date;
+}
+
+// Filters for the admin audit-log list, all optional. `to` is exclusive, so a day ends where the next begins.
+export function parseAuditLogFilters(query: Record<string, unknown>): AuditLogFilters {
+  const userId = optionalQueryString(query.userId, 'userId');
+  const action = optionalQueryString(query.action, 'action');
+  const result = optionalQueryString(query.result, 'result');
+  const from   = optionalQueryString(query.from,   'from');
+  const to     = optionalQueryString(query.to,     'to');
+
+  return {
+    userId:   userId !== undefined ? parseId(userId, 'userId filter') : undefined,
+    username: optionalQueryString(query.username, 'username'),
+    actions:  action !== undefined ? parseAuditActions(action) : undefined,
+    result:   result !== undefined ? parseAuditResult(result) : undefined,
+    from:     from   !== undefined ? parseDate(from, 'from') : undefined,
+    to:       to     !== undefined ? parseDate(to, 'to') : undefined,
+  };
+}
+
+// A page the frontend reports. The path is the page's own, without a query string, e.g. /products/5.
+export function parsePageView(body: Record<string, unknown>): PageView {
+  const path = requireString(body.path, 'path');
+  if (path.length > MAX_PAGE_PATH_LENGTH || !/^\/[^\s?#]*$/.test(path))
+    throw new AppError(`path must be a page path such as /products/5, at most ${MAX_PAGE_PATH_LENGTH} characters`, 400);
+
+  const page = optionalString(body.page, 'page');
+  if (page !== undefined && page.length > MAX_PAGE_NAME_LENGTH)
+    throw new AppError(`page must be at most ${MAX_PAGE_NAME_LENGTH} characters`, 400);
+
+  return { path, page };
 }
 
 // Bounded page size so a single list request can't pull the whole table (OWASP API4)

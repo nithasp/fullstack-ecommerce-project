@@ -56,19 +56,3 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
     next(err);
   }
 };
-
-// Records who changed what through the admin API (OWASP API9/API10 monitoring)
-export const auditAdmin = (req: Request, res: Response, next: NextFunction) => {
-  if (req.method === 'GET') return next();
-  res.on('finish', () => {
-    console.info(JSON.stringify({
-      event: 'admin.action',
-      at: new Date().toISOString(),
-      adminId: req.user?.userId,
-      method: req.method,
-      path: req.originalUrl,
-      status: res.statusCode,
-    }));
-  });
-  next();
-};

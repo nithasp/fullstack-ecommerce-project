@@ -73,6 +73,11 @@ export class NavbarComponent implements OnInit, OnDestroy {
     return this.currentUser?.username ?? 'User';
   }
 
+  // Only decides whether the link shows; the admin API checks the role itself
+  get isAdmin(): boolean {
+    return this.currentUser?.role === 'admin';
+  }
+
   toggleUserMenu(): void {
     this.userMenuOpen = !this.userMenuOpen;
   }

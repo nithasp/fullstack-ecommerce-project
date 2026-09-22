@@ -344,9 +344,21 @@ curl -X DELETE http://localhost:3000/api/v1/addresses/1 -H "Authorization: Beare
 
 ---
 
+## Page Views
+
+The frontend reports each page a signed-in user opens; it shows up in the admin audit log as a `PAGE_VIEW` entry. `path` is the page's own path (no query string); `page` is an optional readable name.
+
+```bash
+curl -X POST http://localhost:3000/api/v1/page-views \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"path":"/products/5","page":"Product detail"}'
+```
+
+---
+
 ## Admin
 
-> Every `/admin` route requires an **admin** token. The role is re-checked in the database on each call (a demoted admin is blocked immediately) and every non-GET request is written to the server audit log.
+> Every `/admin` route requires an **admin** token. The role is re-checked in the database on each call (a demoted admin is blocked immediately). Like every signed-in request, each call is written to the audit log (see [Audit log](#audit-log) below).
 > List routes accept `?limit=` (1–100, default 50) and `?offset=`.
 
 **Create the first admin** (self-registration can never create one). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (12+ characters) in `.env`, then:
@@ -440,6 +452,47 @@ curl -X PUT http://localhost:3000/api/v1/admin/addresses/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"city":"Brooklyn"}'
 curl -X DELETE http://localhost:3000/api/v1/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### Audit log
+
+Every request a signed-in user makes, plus logins, failed logins, logouts, registrations, replayed refresh tokens and the frontend pages people open. Newest first. Read-only: there is no route that edits or deletes an entry, and entries older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted by the server.
+
+```bash
+# The newest entries
+curl "http://localhost:3000/api/v1/admin/audit-logs?limit=25" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# One user's entries (or ?username=ali for any username containing "ali")
+curl "http://localhost:3000/api/v1/admin/audit-logs?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Only some types (comma-separated): CREATE, READ, UPDATE, DELETE, LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY, PAGE_VIEW
+curl "http://localhost:3000/api/v1/admin/audit-logs?action=LOGIN,LOGIN_FAILED" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Which pages of the app one user opened
+curl "http://localhost:3000/api/v1/admin/audit-logs?userId=2&action=PAGE_VIEW" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Only failed requests (status 400 and above) in a time range; `to` is exclusive
+curl "http://localhost:3000/api/v1/admin/audit-logs?result=failure&from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:00Z" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+An entry looks like this:
+```json
+{
+  "id": 1042,
+  "createdAt": "2026-09-22T10:41:30.512Z",
+  "userId": 7,
+  "username": "alice",
+  "userRole": "customer",
+  "action": "CREATE",
+  "event": "cart.item_added",
+  "method": "POST",
+  "path": "/api/v1/cart",
+  "statusCode": 201,
+  "ipAddress": "203.0.113.5",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...",
+  "details": { "productId": 5, "quantity": 2 }
+}
 ```
 
 ---

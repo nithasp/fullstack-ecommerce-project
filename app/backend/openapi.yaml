@@ -70,6 +70,16 @@ info:
       namespace. Admin routes re-read the role from the database on every request, so a
       demoted admin loses access immediately rather than when their token expires.
 
+    ## Audit log
+
+    Every request a signed-in user makes is recorded: who, when, the route, the result and a
+    few non-secret details — never a password, a token or a request body. Logins, failed
+    logins, logouts, registrations and replayed refresh tokens are recorded too, and so is
+    every page of the frontend a signed-in user opens, which the frontend reports with
+    `POST /page-views`. Admins read the log with `GET /admin/audit-logs`. No route edits or
+    deletes an entry; the server deletes entries older than `AUDIT_LOG_RETENTION_DAYS`
+    (default 90).
+
     ## Rate limits
 
     - `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`: 20 requests per IP
@@ -130,6 +140,10 @@ tags:
     description: Inspect and manage any user's cart.
   - name: Admin · Addresses
     description: Manage any user's shipping addresses.
+  - name: Admin · Audit Logs
+    description: Read-only history of who did what, and when.
+  - name: Page Views
+    description: The frontend reports each page a signed-in user opens, for the audit log.
 
 security:
   - bearerAuth: []
@@ -2391,6 +2405,142 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── Admin · Audit Logs ──────────────────────────────────────────────────────
+
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [Admin · Audit Logs]
+      summary: List audit-log entries
+      description: |
+        Newest first, paginated and optionally filtered. Each entry is one request by a
+        signed-in user, one auth event, or one frontend page a user opened. Its type comes
+        from the HTTP method — `GET` is `READ`, `POST` is `CREATE`, `PUT` is `UPDATE`,
+        `DELETE` is `DELETE` — except for the auth events and `PAGE_VIEW`, which have types
+        of their own.
+
+        The log is read-only: no route edits or deletes an entry, and reading the log is not
+        itself recorded. Entries older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are
+        deleted by the server.
+      operationId: adminListAuditLogs
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Only this user's entries.
+          schema: { type: integer, minimum: 1 }
+        - name: username
+          in: query
+          required: false
+          description: Only entries whose username contains this text, ignoring letter case.
+          schema: { type: string, maxLength: 100 }
+        - name: action
+          in: query
+          required: false
+          description: |
+            One or more types, comma-separated, in any letter case. Until they are switched
+            on, the admin page hides page views and API reads by sending every type except
+            `PAGE_VIEW` and `READ`.
+          schema: { type: string, example: 'LOGIN,LOGIN_FAILED' }
+        - name: result
+          in: query
+          required: false
+          description: '`success` is any status below 400; `failure` is 400 and above.'
+          schema: { type: string, enum: [success, failure] }
+        - name: from
+          in: query
+          required: false
+          description: Only entries at or after this moment (ISO 8601).
+          schema: { type: string, format: date-time, example: '2026-09-01T00:00:00Z' }
+        - name: to
+          in: query
+          required: false
+          description: Only entries before this moment (ISO 8601) — exclusive, so a day ends where the next begins.
+          schema: { type: string, format: date-time, example: '2026-09-02T00:00:00Z' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of entries, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      message: { type: string, example: Audit logs fetched. }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AuditLog' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
+        '400':
+          description: An unknown type or result, or a value that is not a date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+              example:
+                status: 400
+                message: 'result must be one of: success, failure'
+                data: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Page Views ──────────────────────────────────────────────────────────────
+
+  /api/v1/page-views:
+    post:
+      tags: [Page Views]
+      summary: Report a page the user opened
+      description: |
+        The frontend calls this after each navigation. The report becomes one `PAGE_VIEW`
+        entry in the audit log for the token user, with the page's path in place of the API
+        route and no HTTP method. Page views are reported by the browser, so unlike the API
+        entries they can be left out or made up by the client.
+
+        A refused report (`400`) is recorded as `page.view_rejected`.
+      operationId: recordPageView
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  maxLength: 255
+                  pattern: '^/[^\s?#]*$'
+                  description: The page's path, without a query string or fragment.
+                  example: /products/5
+                page:
+                  type: string
+                  maxLength: 60
+                  description: A readable name for the page, shown in the Activity Log.
+                  example: Product detail
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      status: { type: integer, example: 201 }
+                      message: { type: string, example: Page view recorded. }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
 
   securitySchemes:
@@ -2849,6 +2999,53 @@ components:
           description: '`null` or an empty string clears the stored phone.'
         label: { $ref: '#/components/schemas/AddressLabel' }
         isDefault: { type: boolean }
+
+    AuditAction:
+      type: string
+      enum: [CREATE, READ, UPDATE, DELETE, LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY, PAGE_VIEW]
+      description: |
+        `CREATE`, `READ`, `UPDATE` and `DELETE` come from the HTTP method. `LOGIN`,
+        `LOGIN_FAILED`, `LOGOUT` and `REGISTER` are auth events, `SECURITY` marks a
+        replayed refresh token, and `PAGE_VIEW` is a frontend page the user opened.
+
+    AuditLog:
+      type: object
+      description: |
+        One recorded event. The username is copied into the entry when it is written, so
+        the entry still names the user after the account is deleted. A failed login for a
+        username that does not exist has `userId: null`.
+      properties:
+        id: { type: integer, example: 1042 }
+        createdAt: { type: string, format: date-time }
+        userId: { type: integer, nullable: true, example: 7 }
+        username: { type: string, nullable: true, example: alice }
+        userRole: { type: string, enum: [customer, admin], nullable: true, example: customer }
+        action: { $ref: '#/components/schemas/AuditAction' }
+        event:
+          type: string
+          description: A readable name for what happened, as `resource.what_happened`.
+          example: cart.item_added
+        method:
+          type: string
+          nullable: true
+          description: The HTTP method; `null` for a page view.
+          example: POST
+        path:
+          type: string
+          nullable: true
+          description: The request path, without its query string. For a page view, the page's own path, e.g. `/products/5`.
+          example: /api/v1/cart
+        statusCode: { type: integer, nullable: true, example: 201 }
+        ipAddress: { type: string, nullable: true, example: 203.0.113.5 }
+        userAgent: { type: string, nullable: true, example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            Small, non-secret facts: ids, quantities, a status, or for an update the names of
+            the fields that changed (never their values).
+          example: { productId: 5, quantity: 2 }
 
   responses:
 

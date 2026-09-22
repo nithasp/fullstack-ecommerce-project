@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
-import { verifyAuthToken, requireAdmin, auditAdmin } from '../middleware/auth';
+import { verifyAuthToken, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
-// One guard chain for the whole namespace: token → DB role check → audit log.
+// One guard chain for the whole namespace: token → DB role check.
 // It belongs to this router, so it can't leak onto routes registered elsewhere.
-router.use(verifyAuthToken, requireAdmin, auditAdmin);
+// Every request here lands in the audit log through recordActivity (app.ts), like any other route.
+router.use(verifyAuthToken, requireAdmin);
 
 router.get('/users',                admin.listUsers);
 router.post('/users',               admin.createUser);
@@ -36,5 +37,8 @@ router.post('/addresses',           admin.createAddress);
 router.get('/addresses/:id',        admin.showAddress);
 router.put('/addresses/:id',        admin.updateAddress);
 router.delete('/addresses/:id',     admin.deleteAddress);
+
+// Read-only: there is deliberately no route that edits or deletes an entry
+router.get('/audit-logs',           admin.listAuditLogs);
 
 export default router;

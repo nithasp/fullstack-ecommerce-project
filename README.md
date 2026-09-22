@@ -11,6 +11,7 @@ An e-commerce single-page application built with **Angular 18** and backed by a 
 - **Order confirmation** — success page displayed after checkout
 - **User authentication** — register, log in, log out with JWT (access + refresh tokens)
 - **Admin role** — `customer` / `admin` roles; admins get an `/admin` API to list and manage every user's orders, carts and addresses, manage roles, and maintain the catalog (see [app/backend/SECURITY.md](app/backend/SECURITY.md) for the OWASP API Top 10 mapping)
+- **Activity log** — every signed-in request, login, failed login and logout is recorded with who, when, the route and the result, along with each page of the app a user opens; admins browse it on an Activity Log page with filters for user, type, result and dates. Entries are kept for 90 days
 - **Cart badge** — navbar shows the current item count; empty-cart state when no items are present
 - **Form validation** — required fields, minimum lengths (e.g. username ≥ 3 chars, password ≥ 6 chars), password confirmation match
 - **Toast notifications** — user feedback on every cart/auth/checkout action
@@ -65,10 +66,10 @@ ng test
 ├── app/
 │   ├── backend/              # Node/Express REST API + PostgreSQL
 │   │   ├── src/
-│   │   │   ├── app.ts        # Express app assembly (server.ts only calls listen)
+│   │   │   ├── app.ts        # Express app assembly (server.ts calls listen and schedules the audit-log cleanup)
 │   │   │   ├── routes/       # URL + middleware per domain, mounted under /api/v1
 │   │   │   ├── controllers/  # Request parsing, validation and responses
-│   │   │   ├── services/     # Multi-step logic: token issue/rotation, checkout
+│   │   │   ├── services/     # Multi-step logic: token issue/rotation, checkout, audit-log writes
 │   │   │   ├── repositories/ # One class per table: parameterized SQL + row mapping
 │   │   │   ├── middleware/   # JWT auth, admin role check, audit log, rate limits
 │   │   │   ├── utils/        # Validators, response envelope, error handler
@@ -82,7 +83,8 @@ ng test
 │           ├── features/
 │           │   ├── auth/     # Login & Register (lazy-loaded)
 │           │   ├── products/ # Product list & detail (lazy-loaded)
-│           │   └── cart/     # Cart page & order confirmation (lazy-loaded)
+│           │   ├── cart/     # Cart page & order confirmation (lazy-loaded)
+│           │   └── admin/    # Activity Log page for admins (lazy-loaded)
 │           └── shared/       # Navbar, loading spinner, confirm dialog, form controls, pipes
 └── docs/                     # Dependency reference
 ```

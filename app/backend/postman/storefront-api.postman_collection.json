@@ -1868,8 +1868,58 @@
       ]
     },
     {
+      "name": "Page Views",
+      "description": "The frontend reports each page the signed-in user opens; each report becomes a PAGE_VIEW entry in the admin audit log.",
+      "item": [
+        {
+          "name": "Report a Page View",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/page-views",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "page-views"
+              ]
+            },
+            "description": "`path` is required: the page's own path, starting with `/`, without a query string (max 255). `page` is an optional readable name (max 60).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"/products/{{productId}}\",\n  \"page\": \"Product detail\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Admin",
-      "description": "Every request here requires an admin token (`{{adminAccessToken}}`) — the role is re-checked against the database on each call, and all non-GET requests are written to the server audit log. List endpoints accept `limit` (1–100, default 50) and `offset`. Set `targetUserId` to the customer you want to act on.",
+      "description": "Every request here requires an admin token (`{{adminAccessToken}}`) — the role is re-checked against the database on each call, and every call is written to the audit log (see Audit Logs). List endpoints accept `limit` (1–100, default 50) and `offset`. Set `targetUserId` to the customer you want to act on.",
       "item": [
         {
           "name": "Users",
@@ -3114,6 +3164,172 @@
                   ]
                 },
                 "description": "Deletes any address.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Audit Logs",
+          "item": [
+            {
+              "name": "List Audit Logs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?limit=25&offset=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "audit-logs"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "25"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0"
+                    }
+                  ]
+                },
+                "description": "Newest first: every request by a signed-in user, plus logins, failed logins, logouts, registrations and replayed refresh tokens. Read-only — no route edits or deletes an entry; entries older than 90 days (`AUDIT_LOG_RETENTION_DAYS`) are deleted by the server. Also filters by `username` (part of a name), `result` (`success` / `failure`) and `from` / `to` (ISO 8601, `to` exclusive).",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "One User's Activity",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?userId={{targetUserId}}&limit=50&offset=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "audit-logs"
+                  ],
+                  "query": [
+                    {
+                      "key": "userId",
+                      "value": "{{targetUserId}}"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0"
+                    }
+                  ]
+                },
+                "description": "Everything one user did, newest first.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Failed Logins",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?action=LOGIN_FAILED&limit=50&offset=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "audit-logs"
+                  ],
+                  "query": [
+                    {
+                      "key": "action",
+                      "value": "LOGIN_FAILED"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0"
+                    }
+                  ]
+                },
+                "description": "Only entries of these types, comma-separated: CREATE, READ, UPDATE, DELETE, LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY, PAGE_VIEW. A failed login keeps the username that was tried, never the password.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [

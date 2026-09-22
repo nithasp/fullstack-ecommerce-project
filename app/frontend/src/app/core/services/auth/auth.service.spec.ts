@@ -21,6 +21,7 @@ describe('AuthService', () => {
       username: 'testuser',
       firstName: 'Test',
       lastName: 'User',
+      role: 'customer',
     },
     accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoxfSwiZXhwIjo5OTk5OTk5OTk5fQ.abc',
     refreshToken: 'refresh_token_mock',

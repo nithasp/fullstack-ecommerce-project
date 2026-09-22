@@ -1,0 +1,328 @@
+@import 'variables';
+@import 'mixins';
+
+// Badge colours beyond the shared palette; each pair keeps its text readable (4.5:1 or better)
+$badge-gray: #4b5563;
+$badge-slate: #475569;
+$badge-slate-bg: #f1f5f9;
+$badge-teal: #0e7490;
+$badge-teal-bg: #ecfeff;
+$badge-violet: #6d28d9;
+$badge-violet-bg: #f5f3ff;
+$badge-amber-bg: #fffbeb;
+$badge-sky: #0369a1;
+$badge-sky-bg: #f0f9ff;
+$font-mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+
+.activity-log {
+  @include container;
+  padding-top: $spacing-xl;
+  padding-bottom: $spacing-3xl;
+
+  &__header {
+    @include flex-between;
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+  }
+
+  &__title {
+    font-size: $font-size-3xl;
+    font-weight: $font-weight-bold;
+    color: $color-text;
+  }
+
+  &__subtitle {
+    color: $color-text-light;
+  }
+
+  &__refresh {
+    @include button-secondary;
+    flex-shrink: 0;
+  }
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+
+  &__filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+    padding: $spacing-md;
+    background: $color-bg-white;
+    border-radius: $border-radius-lg;
+    box-shadow: $shadow-sm;
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    flex: 1 1 140px;
+
+    &--wide { flex-basis: 200px; }
+  }
+
+  &__label {
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: $color-text-light;
+  }
+
+  &__control {
+    width: 100%;
+    padding: $spacing-sm $spacing-sm-md;
+    border: 2px solid $color-border;
+    border-radius: $border-radius-md;
+    font-size: $font-size-sm;
+    color: $color-text;
+    background: $color-bg-white;
+    outline: none;
+    transition: border-color $transition-fast, box-shadow $transition-fast;
+
+    &:focus {
+      border-color: $color-primary;
+      box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+    }
+  }
+
+  &__check {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    min-height: 40px;
+    font-size: $font-size-sm;
+    color: $color-text;
+    cursor: pointer;
+
+    input {
+      width: 16px;
+      height: 16px;
+      accent-color: $color-primary;
+      cursor: pointer;
+    }
+  }
+
+  &__clear {
+    @include button-base;
+    min-height: 40px;
+    padding: $spacing-sm $spacing-sm-md;
+    background: none;
+    color: $color-primary;
+
+    &:hover { background: $color-primary-bg; }
+  }
+
+  // ── States ───────────────────────────────────────────────────────────────
+
+  &__loading {
+    @include flex-center;
+    flex-direction: column;
+  }
+
+  &__empty {
+    @include flex-center;
+    padding: $spacing-3xl 0;
+    color: $color-text-light;
+    font-size: $font-size-lg;
+  }
+
+  // ── Table ────────────────────────────────────────────────────────────────
+
+  // Scrolls sideways on a narrow screen rather than squeezing the columns
+  &__table-wrap {
+    overflow-x: auto;
+    background: $color-bg-white;
+    border-radius: $border-radius-lg;
+    box-shadow: $shadow-md;
+    transition: opacity $transition-fast;
+
+    &--busy { opacity: 0.6; }
+  }
+
+  &__table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    font-size: $font-size-sm;
+
+    th {
+      padding: $spacing-sm-md $spacing-md;
+      text-align: left;
+      font-size: $font-size-xs;
+      font-weight: $font-weight-semibold;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: $color-text-light;
+      background: $color-bg;
+      border-bottom: 1px solid $color-border;
+    }
+
+    td {
+      padding: $spacing-sm-md $spacing-md;
+      border-bottom: 1px solid $color-border;
+      vertical-align: middle;
+    }
+  }
+
+  &__row {
+    cursor: pointer;
+    transition: background $transition-fast;
+
+    &:hover { background: $color-bg; }
+
+    &--open,
+    &--open:hover { background: $color-primary-bg; }
+  }
+
+  &__time {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: $color-text-light;
+  }
+
+  &__user { white-space: nowrap; }
+
+  &__user-id {
+    margin-right: $spacing-xs;
+    color: $color-text-muted;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__role {
+    margin-left: $spacing-xs;
+    padding: 1px 6px;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+    color: $color-primary-dark;
+    background: $color-primary-bg;
+    border-radius: $border-radius-full;
+  }
+
+  &__badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-bold;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    border-radius: $border-radius-full;
+    color: $badge-gray;
+    background: $color-bg;
+
+    &--create       { color: darken($color-success, 12%); background: $color-success-bg; }
+    &--update       { color: $color-primary-dark; background: $color-primary-bg; }
+    &--delete       { color: darken($color-error, 18%); background: $color-error-bg; }
+    &--login        { color: $badge-teal; background: $badge-teal-bg; }
+    &--login_failed { color: darken($color-warning, 22%); background: $badge-amber-bg; }
+    &--logout       { color: $badge-slate; background: $badge-slate-bg; }
+    &--register     { color: $badge-violet; background: $badge-violet-bg; }
+    &--security     { color: white; background: darken($color-error, 18%); }
+    &--page_view    { color: $badge-sky; background: $badge-sky-bg; }
+  }
+
+  &__route {
+    max-width: 280px;
+    @include truncate-text;
+    font-family: $font-mono;
+    font-size: $font-size-xs;
+  }
+
+  &__method { font-weight: $font-weight-bold; }
+
+  &__result {
+    font-weight: $font-weight-semibold;
+    white-space: nowrap;
+    color: darken($color-success, 12%);
+
+    &--failed { color: darken($color-error, 18%); }
+  }
+
+  &__toggle {
+    @include flex-center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: $border-radius-sm;
+    color: $color-text-light;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      border-color: $color-primary;
+      color: $color-primary;
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+      transition: transform $transition-fast;
+    }
+
+    &[aria-expanded='true'] svg { transform: rotate(180deg); }
+  }
+
+  &__details-row td {
+    padding: $spacing-md $spacing-lg;
+    background: $color-bg;
+  }
+
+  &__details {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: $spacing-xs $spacing-lg;
+
+    dt {
+      font-weight: $font-weight-semibold;
+      color: $color-text-light;
+    }
+
+    dd {
+      color: $color-text;
+      word-break: break-word;
+    }
+
+    code {
+      font-family: $font-mono;
+      font-size: $font-size-xs;
+    }
+  }
+
+  // ── Pager ────────────────────────────────────────────────────────────────
+
+  &__pager {
+    @include flex-between;
+    flex-wrap: wrap;
+    gap: $spacing-md;
+    margin-top: $spacing-lg;
+  }
+
+  &__range {
+    font-size: $font-size-sm;
+    color: $color-text-light;
+  }
+
+  &__pager-buttons {
+    display: flex;
+    gap: $spacing-sm;
+  }
+
+  &__page-btn {
+    @include button-secondary;
+    padding: $spacing-xs $spacing-md;
+  }
+
+  // Announced by screen readers, never shown
+  &__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}

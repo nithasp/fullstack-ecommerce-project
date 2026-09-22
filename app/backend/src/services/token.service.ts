@@ -3,8 +3,10 @@ import { config } from '../config';
 import { withTransaction } from '../database';
 import { RefreshTokenRepository } from '../repositories/refreshToken.repository';
 import { UserRepository } from '../repositories/user.repository';
+import { recordEvent } from './audit.service';
 import { AppError } from '../utils/response';
 import { AccessTokenPayload, TokenPair } from '../types/auth.types';
+import { AuditSource } from '../types/auditLog.types';
 import { PublicUser, USER_ROLES, UserRole } from '../types/user.types';
 
 /**
@@ -52,9 +54,10 @@ export async function issueTokens(user: PublicUser): Promise<TokenPair> {
  *
  * A token that was already exchanged and turns up again has been copied: one of its two holders
  * is not the user, and there is no telling which. So the whole session (every token in the
- * family) is revoked and the user signs in again.
+ * family) is revoked and the user signs in again. The replay is also written to the audit log,
+ * with `source` saying where the request came from.
  */
-export async function rotateRefreshToken(token: string): Promise<TokenPair> {
+export async function rotateRefreshToken(token: string, source: AuditSource = {}): Promise<TokenPair> {
   const pair = await withTransaction(async (tx) => {
     const consumed = await refreshTokens.consume(token, tx);
     if (!consumed) return null;
@@ -76,13 +79,14 @@ export async function rotateRefreshToken(token: string): Promise<TokenPair> {
       at: new Date().toISOString(),
       userId: reused.userId,
     }));
+    recordEvent({ ...source, userId: reused.userId, action: 'SECURITY', event: 'auth.refresh_token_reuse', statusCode: 401 });
   }
   throw new AppError(INVALID_REFRESH_TOKEN, 401);
 }
 
-// Logout: ends the session this refresh token belongs to
-export async function revokeSession(refreshToken: string): Promise<void> {
-  await refreshTokens.deleteFamilyOf(refreshToken);
+// Logout: ends the session this refresh token belongs to and returns whose it was (null for no match)
+export async function revokeSession(refreshToken: string): Promise<number | null> {
+  return refreshTokens.deleteFamilyOf(refreshToken);
 }
 
 // Logout everywhere; also used on a role change so the old privilege can't be renewed

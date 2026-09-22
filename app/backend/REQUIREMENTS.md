@@ -82,8 +82,13 @@ Orders are scoped to the token user: another user's order id returns 404, and an
 | PUT    | `/addresses/:id`  | JWT  | Update address       |
 | DELETE | `/addresses/:id`  | JWT  | Delete address       |
 
+### Page views
+| Method | Route         | Auth | Description |
+| ------ | ------------- | ---- | ----------- |
+| POST   | `/page-views` | JWT  | Report a frontend page the user opened (`path`, optional `page` name); recorded as a `PAGE_VIEW` audit-log entry |
+
 ### Admin
-All routes require an admin token. The role is re-read from the database on every request and every non-GET request is audit-logged. List routes are paginated.
+All routes require an admin token. The role is re-read from the database on every request. List routes are paginated. Every signed-in request, on these routes and all others, is written to the audit log.
 
 | Method | Route                          | Description                                   |
 | ------ | ------------------------------ | --------------------------------------------- |
@@ -112,6 +117,7 @@ All routes require an admin token. The role is re-read from the database on ever
 | POST   | `/admin/addresses`             | Create address for `userId` in body           |
 | PUT    | `/admin/addresses/:id`         | Update any address                            |
 | DELETE | `/admin/addresses/:id`         | Delete any address                            |
+| GET    | `/admin/audit-logs`            | Audit log, newest first (`?userId=` `?username=` `?action=` `?result=` `?from=` `?to=`); read-only |
 
 **Auth:** Protected routes require `Authorization: Bearer <accessToken>`. Tokens are issued by `/auth/register` and `/auth/login`, are signed with HS256 (tokens using any other algorithm are rejected) and carry `userId` and `role`.
 
@@ -203,6 +209,25 @@ Unique constraint: `(user_id, product_id, type_id)`
 | created_at | TIMESTAMP    | DEFAULT NOW()                                  |
 | updated_at | TIMESTAMP    | DEFAULT NOW()                                  |
 
+### audit_logs
+One row per recorded event. `user_id` has no foreign key and the username is copied in, so entries outlive a deleted account. Rows older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted daily.
+
+| Column      | Type         | Constraints                                    |
+| ----------- | ------------ | ---------------------------------------------- |
+| id          | BIGSERIAL    | PRIMARY KEY                                    |
+| created_at  | TIMESTAMPTZ  | NOT NULL, DEFAULT NOW()                        |
+| user_id     | INTEGER      |                                                |
+| username    | VARCHAR(100) |                                                |
+| user_role   | VARCHAR(20)  |                                                |
+| action      | VARCHAR(20)  | NOT NULL, CHECK IN ('CREATE','READ','UPDATE','DELETE','LOGIN','LOGIN_FAILED','LOGOUT','REGISTER','SECURITY','PAGE_VIEW') |
+| event       | VARCHAR(60)  | NOT NULL                                       |
+| method      | VARCHAR(10)  | NULL for a page view                           |
+| path        | VARCHAR(255) | the page's own path for a page view            |
+| status_code | SMALLINT     |                                                |
+| ip_address  | VARCHAR(45)  |                                                |
+| user_agent  | VARCHAR(255) |                                                |
+| details     | JSONB        |                                                |
+
 ---
 
 ## Data Shapes (TypeScript)
@@ -218,4 +243,9 @@ CartItem    { id: number, userId: number, productId: number, quantity: number,
               typeId: string, selectedType?: object, shopId?: string, shopName?: string }
 Address     { id: number, userId: number, fullName: string, phone?: string, address: string,
               city: string, label: 'home' | 'work' | 'other', isDefault: boolean }
+AuditLog    { id: number, createdAt: string, userId: number | null, username: string | null,
+              userRole: 'customer' | 'admin' | null, action: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' |
+              'LOGIN' | 'LOGIN_FAILED' | 'LOGOUT' | 'REGISTER' | 'SECURITY' | 'PAGE_VIEW', event: string,
+              method: string | null, path: string | null, statusCode: number | null,
+              ipAddress: string | null, userAgent: string | null, details: object | null }
 ```

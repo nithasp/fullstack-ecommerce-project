@@ -60,6 +60,17 @@ describe('NavbarComponent', () => {
     expect(icon).toBeTruthy();
   });
 
+  it('should show the Activity Log link to admins only', () => {
+    component.isLoggedIn = true;
+    component.currentUser = { id: 1, username: 'boss', firstName: 'Big', lastName: 'Boss', role: 'admin' };
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/admin/activity"]')).toBeTruthy();
+
+    component.currentUser = { ...component.currentUser, role: 'customer' };
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/admin/activity"]')).toBeFalsy();
+  });
+
   it('should start with cart count 0', () => {
     expect(component.cartCount).toBe(0);
   });

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import apiRoutes from './routes';
 import docsRoutes from './routes/docs.routes';
 import { apiLimiter } from './middleware/rateLimit';
+import { recordActivity } from './middleware/audit';
 import { errorMiddleware, notFoundMiddleware } from './utils/response';
 import { config } from './config';
 
@@ -27,7 +28,8 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 app.use(docsRoutes);
-app.use(API_PREFIX, apiRoutes);
+// recordActivity writes one audit-log row per signed-in request once its response has gone out
+app.use(API_PREFIX, recordActivity, apiRoutes);
 
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);

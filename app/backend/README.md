@@ -45,6 +45,7 @@ PORT=3000
 ALLOWED_ORIGIN=http://localhost:4200
 API_RATE_LIMIT=500          # requests per IP per 15 min (optional)
 JSON_BODY_LIMIT=1mb         # max JSON body (optional)
+AUDIT_LOG_RETENTION_DAYS=90 # days an audit-log entry is kept (optional)
 ADMIN_USERNAME=admin        # used by `npm run seed:admin` only
 ADMIN_PASSWORD=change-me-to-a-long-password
 ```
@@ -87,8 +88,9 @@ services/      Logic that spans several repositories or needs a transaction (tok
 repositories/  One class per table; parameterized SQL and row mapping, nothing HTTP-specific
 ```
 
-Around them: `app.ts` assembles the Express app (tests import it), `server.ts` only calls
-`listen`, `middleware/` holds auth and rate limiting, `utils/` the shared validators, response
+Around them: `app.ts` assembles the Express app (tests import it), `server.ts` calls `listen`
+and schedules the daily audit-log cleanup, `middleware/` holds auth, rate limiting and the
+audit log, `utils/` the shared validators, response
 helpers and error handler, and `types/` the shapes passed between layers. Simple CRUD goes
 straight from controller to repository; a service exists only where there is real logic.
 
@@ -126,6 +128,7 @@ Every API route is versioned under `/api/v1`, so a breaking change can ship as `
 | Orders     | `/api/v1/orders`     | JWT                      |
 | Cart       | `/api/v1/cart`       | JWT                      |
 | Addresses  | `/api/v1/addresses`  | JWT                      |
+| Page views | `/api/v1/page-views` | JWT                      |
 | Admin      | `/api/v1/admin`      | JWT + admin role         |
 
 List routes are paginated with `?limit=` (1–100, default 50) and `?offset=`, and return a
@@ -136,7 +139,17 @@ Every account has a `role`: `customer` (default) or `admin`.
 
 - **Customers** only reach their own users/orders/cart/addresses (another user's id returns `403` or `404`).
 - **Admins** bypass those ownership checks and get the `/admin` namespace: list and CRUD **every** user's orders, carts and addresses, manage users and roles, and write to the product catalog.
-- Admin routes re-check the role in the database on every call, and every admin mutation is written to the audit log.
+- Admin routes re-check the role in the database on every call.
+
+### Audit log
+Every request a signed-in user makes is saved to the `audit_logs` table: who, when, the route, the
+result and a few non-secret details (never passwords, tokens or request bodies). Logins, failed
+logins, logouts, registrations and replayed refresh tokens are saved too, and the frontend reports
+each page a signed-in user opens (`POST /api/v1/page-views`, saved as `PAGE_VIEW`).
+
+- Admins read it at `GET /api/v1/admin/audit-logs` (filter by user, type, result and time range) or on the frontend's **Activity Log** page.
+- It is read-only: no route edits or deletes an entry, and reading the log is not itself recorded.
+- Entries older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted at startup and then once a day.
 
 See [API_TESTING.md](API_TESTING.md) for full cURL examples and [SECURITY.md](SECURITY.md) for how the API maps to the OWASP API Security Top 10.
 

@@ -3,27 +3,30 @@ import { UserRepository } from '../repositories/user.repository';
 import { OrderRepository } from '../repositories/order.repository';
 import { CartRepository } from '../repositories/cart.repository';
 import { AddressRepository } from '../repositories/address.repository';
+import { AuditLogRepository } from '../repositories/auditLog.repository';
 import { revokeAllSessions } from '../services/token.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError, sendPage, sendSuccess } from '../utils/response';
 import {
-  optionalPassword, optionalRole, optionalString, parseAddressUpdate, parseCartItemPayload, parseId,
-  parseNewAddress, parseOrderStatus, parsePagination, requirePassword, requirePositiveInt, requireRole,
+  optionalPassword, optionalRole, optionalString, parseAddressUpdate, parseAuditLogFilters, parseCartItemPayload,
+  parseId, parseNewAddress, parseOrderStatus, parsePagination, requirePassword, requirePositiveInt, requireRole,
   requireString,
 } from '../utils/validate';
 
 /**
  * Admin API — every route here requires a valid access token whose account is an admin
- * (re-checked against the database on each request). Mutations are written to the audit log.
+ * (re-checked against the database on each request). Like every signed-in request, each
+ * call is written to the audit log.
  *
  * Unlike the customer routes, these are not scoped to the token user: an admin can list and
- * manage users, orders, carts and addresses belonging to any account.
+ * manage users, orders, carts and addresses belonging to any account, and read the audit log.
  */
 
 const users = new UserRepository();
 const orders = new OrderRepository();
 const carts = new CartRepository();
 const addresses = new AddressRepository();
+const auditLogs = new AuditLogRepository();
 
 const requireUserExists = async (userId: number) => {
   const user = await users.show(userId);
@@ -254,4 +257,14 @@ export const deleteAddress = asyncHandler(async (req: Request, res: Response) =>
   const deleted = await addresses.delete(id, existing.userId);
   if (!deleted) throw new AppError(`Address ${id} not found`, 404);
   sendSuccess(res, deleted, 'Address deleted.');
+});
+
+// ── Audit log ────────────────────────────────────────────────────────────────
+
+// Newest first. Entries can only be read: the server deletes them once they pass the retention period.
+export const listAuditLogs = asyncHandler(async (req: Request, res: Response) => {
+  const filters = parseAuditLogFilters(req.query);
+  const page = parsePagination(req.query);
+  const [items, total] = await Promise.all([auditLogs.index(filters, page), auditLogs.count(filters)]);
+  sendPage(res, items, { ...page, total }, 'Audit logs fetched.');
 });

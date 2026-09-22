@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { AuthService } from './core/services/auth/auth.service';
 import { CartService } from './core/services/cart/cart.service';
+import { PageViewService } from './core/services/activity/page-view.service';
 
 @Component({
   selector: 'app-root',
@@ -14,12 +15,15 @@ export class AppComponent implements OnInit {
   constructor(
     private authService: AuthService,
     private cartService: CartService,
+    private pageViewService: PageViewService,
   ) {}
 
   ngOnInit(): void {
     this.authService.initializeAuth().subscribe(() => {
       this.authReady = true;
     });
+
+    this.pageViewService.trackPageViews();
 
     this.authService.isLoggedIn$.subscribe(isLoggedIn => {
       if (isLoggedIn) {

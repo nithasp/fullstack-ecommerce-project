@@ -46,12 +46,14 @@ export class RefreshTokenRepository {
     await pool.query('DELETE FROM refresh_tokens WHERE family_id = $1', [familyId]);
   }
 
-  // Ends the session the token belongs to, including tokens already rotated out of it
-  async deleteFamilyOf(token: string): Promise<void> {
-    await pool.query(
-      'DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1)',
+  // Ends the session the token belongs to, including tokens already rotated out of it.
+  // Returns whose session it was, or null when the token matches none.
+  async deleteFamilyOf(token: string): Promise<number | null> {
+    const { rows } = await pool.query(
+      'DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1) RETURNING user_id',
       [hashToken(token)]
     );
+    return rows[0] ? (rows[0].user_id as number) : null;
   }
 
   async deleteAllForUser(userId: number): Promise<void> {
