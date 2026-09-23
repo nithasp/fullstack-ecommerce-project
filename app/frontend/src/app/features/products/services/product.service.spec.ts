@@ -13,7 +13,7 @@ describe('ProductService', () => {
       id: 1,
       name: 'Product 1',
       category: 'Electronics',
-      price: 99.99,
+      price: '99.99',
       image: 'https://example.com/img1.jpg',
       description: 'First product',
       previewImg: [],
@@ -25,7 +25,7 @@ describe('ProductService', () => {
       id: 2,
       name: 'Product 2',
       category: 'Furniture',
-      price: 199.99,
+      price: '199.99',
       image: 'https://example.com/img2.jpg',
       description: 'Second product',
       previewImg: [],
@@ -93,7 +93,7 @@ describe('ProductService', () => {
     service.getProductById('2').subscribe(product => {
       expect(product).toBeTruthy();
       expect(product.name).toBe('Product 2');
-      expect(product.price).toBe(199.99);
+      expect(product.price).toBe('199.99');
       expect(product.id).toBe(2);
     });
 

@@ -5,11 +5,11 @@ import { authLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
-router.post('/register',   authLimiter, auth.register);
-router.post('/login',      authLimiter, auth.login);
-router.post('/refresh',    authLimiter, auth.refresh);
-router.post('/logout',     auth.logout);
+router.post('/register', authLimiter, auth.register);
+router.post('/login', authLimiter, auth.login);
+router.post('/refresh', authLimiter, auth.refresh);
+router.post('/logout', auth.logout);
 router.post('/logout-all', verifyAuthToken, auth.logoutAll);
-router.get('/me',          verifyAuthToken, auth.me);
+router.get('/me', verifyAuthToken, auth.me);
 
 export default router;

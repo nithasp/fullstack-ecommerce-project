@@ -1,13 +1,14 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { withTransaction } from '../database';
+import { logger } from '../logger';
 import { RefreshTokenRepository } from '../repositories/refreshToken.repository';
 import { UserRepository } from '../repositories/user.repository';
-import { recordEvent } from './audit.service';
-import { AppError } from '../utils/response';
 import { AccessTokenPayload, TokenPair } from '../types/auth.types';
 import { AuditSource } from '../types/auditLog.types';
 import { PublicUser, USER_ROLES, UserRole } from '../types/user.types';
+import { AppError } from '../utils/response';
+import { recordEvent } from './audit.service';
 
 const refreshTokens = new RefreshTokenRepository();
 const users = new UserRepository();
@@ -16,7 +17,8 @@ const users = new UserRepository();
 const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
 const INVALID_REFRESH_TOKEN = 'Invalid or expired refresh token';
 
-// The role claim lets ordinary routes authorize without a DB hit; admin routes re-verify it against the DB
+// The role claim is only ever used to describe a request in the audit log; every authorization
+// check reads the role from the database (OWASP API5)
 export function signAccessToken(user: Pick<PublicUser, 'id' | 'role'>): string {
   return jwt.sign({ userId: user.id, role: user.role }, config.tokenSecret, {
     algorithm: JWT_ALGORITHM,
@@ -25,15 +27,19 @@ export function signAccessToken(user: Pick<PublicUser, 'id' | 'role'>): string {
 }
 
 export function verifyAccessToken(token: string): { userId: number; role: UserRole } {
-  const decoded = jwt.verify(token, config.tokenSecret, { algorithms: [JWT_ALGORITHM] }) as AccessTokenPayload;
+  const decoded = jwt.verify(token, config.tokenSecret, {
+    algorithms: [JWT_ALGORITHM],
+  }) as AccessTokenPayload;
   if (typeof decoded.userId !== 'number') throw new jwt.JsonWebTokenError('token has no numeric userId');
   const role = USER_ROLES.includes(decoded.role as UserRole) ? (decoded.role as UserRole) : 'customer';
   return { userId: decoded.userId, role };
 }
 
-export async function issueTokens(user: PublicUser): Promise<TokenPair> {
+export async function issueSession(user: PublicUser): Promise<TokenPair> {
   const refreshToken = await refreshTokens.create(user.id, config.refreshTokenExpiryMs);
-  refreshTokens.deleteExpired().catch(() => {});
+  refreshTokens
+    .deleteExpired()
+    .catch((err: unknown) => logger.warn({ err }, 'could not clear expired tokens'));
   return { accessToken: signAccessToken(user), refreshToken };
 }
 
@@ -46,38 +52,48 @@ export async function issueTokens(user: PublicUser): Promise<TokenPair> {
  * is not the user, and there is no telling which. So the whole session (every token in the
  * family) is revoked and the user signs in again.
  */
-export async function rotateRefreshToken(token: string, source: AuditSource = {}): Promise<TokenPair> {
-  const pair = await withTransaction(async (tx) => {
+export async function rotateRefreshToken(
+  token: string,
+  source: AuditSource = {},
+): Promise<TokenPair & { user: PublicUser }> {
+  const rotated = await withTransaction(async (tx) => {
     const consumed = await refreshTokens.consume(token, tx);
     if (!consumed) return null;
 
-    // Re-read the account so the new access token carries the current role
     const user = await users.show(consumed.userId, tx);
-    if (!user) throw new AppError(INVALID_REFRESH_TOKEN, 401);
+    if (!user) throw new AppError(INVALID_REFRESH_TOKEN, 401, 'token_invalid');
 
-    const refreshToken = await refreshTokens.create(user.id, config.refreshTokenExpiryMs, consumed.familyId, tx);
-    return { accessToken: signAccessToken(user), refreshToken };
+    const refreshToken = await refreshTokens.create(
+      user.id,
+      config.refreshTokenExpiryMs,
+      consumed.familyId,
+      tx,
+    );
+    return { user, accessToken: signAccessToken(user), refreshToken };
   });
-  if (pair) return pair;
+  if (rotated) return rotated;
 
   const reused = await refreshTokens.findUsed(token);
   if (reused) {
     await refreshTokens.deleteFamily(reused.familyId);
-    console.warn(JSON.stringify({
-      event: 'auth.refresh_token_reuse',
-      at: new Date().toISOString(),
+    logger.warn({ event: 'auth.refresh_token_reuse', userId: reused.userId }, 'refresh token reuse detected');
+    recordEvent({
+      ...source,
       userId: reused.userId,
-    }));
-    recordEvent({ ...source, userId: reused.userId, action: 'SECURITY', event: 'auth.refresh_token_reuse', statusCode: 401 });
+      action: 'SECURITY',
+      event: 'auth.refresh_token_reuse',
+      statusCode: 401,
+    });
   }
-  throw new AppError(INVALID_REFRESH_TOKEN, 401);
+  throw new AppError(INVALID_REFRESH_TOKEN, 401, 'token_invalid');
 }
 
 export async function revokeSession(refreshToken: string): Promise<number | null> {
   return refreshTokens.deleteFamilyOf(refreshToken);
 }
 
-// Logout everywhere; also used on a role change so the old privilege can't be renewed
+// Logout everywhere; also used when a role, a password or an account changes so the old session
+// cannot be renewed
 export async function revokeAllSessions(userId: number): Promise<void> {
   await refreshTokens.deleteAllForUser(userId);
 }

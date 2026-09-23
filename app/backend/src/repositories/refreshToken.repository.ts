@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import pool, { Queryable } from '../database';
+import pool from '../database';
+import { Queryable } from '../types/database.types';
 import { StoredRefreshToken } from '../types/refreshToken.types';
 
 // Only a SHA-256 hash of each token is stored, so a database leak doesn't hand out live sessions
@@ -10,12 +11,12 @@ export class RefreshTokenRepository {
     userId: number,
     expiresInMs: number,
     familyId: string = crypto.randomUUID(),
-    db: Queryable = pool
+    db: Queryable = pool,
   ): Promise<string> {
     const token = crypto.randomBytes(40).toString('hex');
     await db.query(
       'INSERT INTO refresh_tokens (user_id, token_hash, family_id, expires_at) VALUES ($1, $2, $3, $4)',
-      [userId, hashToken(token), familyId, new Date(Date.now() + expiresInMs)]
+      [userId, hashToken(token), familyId, new Date(Date.now() + expiresInMs)],
     );
     return token;
   }
@@ -27,7 +28,7 @@ export class RefreshTokenRepository {
       `UPDATE refresh_tokens SET used_at = NOW()
        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
        RETURNING *`,
-      [hashToken(token)]
+      [hashToken(token)],
     );
     return rows[0] ? this.mapRow(rows[0]) : null;
   }
@@ -35,7 +36,7 @@ export class RefreshTokenRepository {
   async findUsed(token: string): Promise<StoredRefreshToken | null> {
     const { rows } = await pool.query(
       'SELECT * FROM refresh_tokens WHERE token_hash = $1 AND used_at IS NOT NULL',
-      [hashToken(token)]
+      [hashToken(token)],
     );
     return rows[0] ? this.mapRow(rows[0]) : null;
   }
@@ -47,7 +48,7 @@ export class RefreshTokenRepository {
   async deleteFamilyOf(token: string): Promise<number | null> {
     const { rows } = await pool.query(
       'DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1) RETURNING user_id',
-      [hashToken(token)]
+      [hashToken(token)],
     );
     return rows[0] ? (rows[0].user_id as number) : null;
   }

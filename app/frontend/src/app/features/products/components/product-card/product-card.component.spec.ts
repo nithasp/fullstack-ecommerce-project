@@ -12,7 +12,7 @@ describe('ProductCardComponent', () => {
     id: 1,
     name: 'Test Headphones',
     category: 'Electronics',
-    price: 79.99,
+    price: '79.99',
     image: 'https://example.com/img.jpg',
     description: 'Premium wireless headphones with noise cancellation',
     previewImg: ['https://example.com/img.jpg'],
@@ -48,7 +48,7 @@ describe('ProductCardComponent', () => {
 
   it('should receive product via @Input', () => {
     expect(component.product.name).toBe('Test Headphones');
-    expect(component.product.price).toBe(79.99);
+    expect(component.product.price).toBe('79.99');
   });
 
   it('should display product name', () => {

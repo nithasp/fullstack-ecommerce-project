@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Storefront API",
-    "description": "Postman collection for the fullstack-ecommerce backend (app/backend).\n\n**Getting started**\n1. Start the backend (`npm run watch`) — default `baseUrl` is `http://localhost:3000`; every API request adds the `/api/v1` prefix itself.\n2. Run **Auth → Register** (or **Login**). The test script stores `accessToken`, `refreshToken` and `userId` in collection variables.\n3. Every other request inherits Bearer auth from the collection using `{{accessToken}}`.\n4. Create requests (product, order, cart item, address) save the new id into `productId`, `orderId`, `cartItemId`, `addressId`.\n\nAccess tokens expire after 15 minutes by default — run **Auth → Refresh Token** to rotate both tokens.\n\nAuth routes `register`, `login` and `refresh` are rate limited to 20 requests per 15 minutes.\n\n**Admin API**\n1. Create the first admin with `npm run seed:admin` (reads `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`).\n2. Set the `adminUsername` / `adminPassword` collection variables to match and run **Auth → Login (admin)**. It stores `adminAccessToken`, `adminRefreshToken` and `adminUserId`.\n3. Every request in the **Admin** folder (and the product write requests) authenticates with `{{adminAccessToken}}`.\n4. Set `targetUserId` to the customer you want to act on; admin create requests save `adminOrderId`, `adminCartItemId`, `adminAddressId`.\n\nProduct create/update/delete and `GET`/`POST /users` require an admin token; a customer token gets `403`.",
+    "description": "Every route of the storefront API, generated from `openapi.yaml`.\n\n**Sessions:** Register, Login and Refresh store `accessToken` in a collection variable, and the\nrefresh token arrives as an HttpOnly cookie that Postman keeps in its cookie jar — so Refresh and\nLogout work without pasting anything.\n\n**Admin:** run *Auth → Log in as admin* once (after `npm run seed:admin`); every request under\nAdmin uses the `adminAccessToken` it stores.\n\nIds captured from responses (`productId`, `orderId`, `cartItemId`, …) feed the requests that need them.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,10 +32,6 @@
       "value": ""
     },
     {
-      "key": "refreshToken",
-      "value": ""
-    },
-    {
       "key": "userId",
       "value": "1"
     },
@@ -61,14 +57,10 @@
     },
     {
       "key": "adminPassword",
-      "value": "change-me-to-a-long-password"
+      "value": "your-admin-password"
     },
     {
       "key": "adminAccessToken",
-      "value": ""
-    },
-    {
-      "key": "adminRefreshToken",
       "value": ""
     },
     {
@@ -94,31 +86,36 @@
   ],
   "item": [
     {
-      "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": []
-        },
-        "description": "Returns `{ message: \"Storefront API is running!\" }`.",
-        "auth": {
-          "type": "noauth"
-        }
-      },
-      "event": [
+      "name": "Health",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-            ]
-          }
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            },
+            "description": "Health check\n\nAnswers while the server is up. The only route outside the envelope.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -126,7 +123,7 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Register",
+          "name": "Register an account",
           "request": {
             "method": "POST",
             "header": [
@@ -147,13 +144,13 @@
                 "register"
               ]
             },
-            "description": "Creates an account and returns `user`, `accessToken`, `refreshToken`. Password must be at least 8 characters. Returns 409 if the username exists — use Login instead.",
+            "description": "Register an account\n\nCreates a `customer` account and signs it in. A `role` sent in the body is ignored —\nself-registration can never create an admin.\n\n`firstName` falls back to the username and `lastName` to an empty string when omitted.\nUsernames are compared case-insensitively, so `Alice` and `alice` are the same account.\n\nReturns the access token in the body and sets the refresh cookie.\n",
             "auth": {
               "type": "noauth"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -171,7 +168,6 @@
                   "const body = pm.response.json();",
                   "if (pm.response.code === 201 && body.data) {",
                   "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
                   "  pm.collectionVariables.set('userId', body.data.user.id);",
                   "}"
                 ]
@@ -180,7 +176,7 @@
           ]
         },
         {
-          "name": "Login",
+          "name": "Log in",
           "request": {
             "method": "POST",
             "header": [
@@ -201,6 +197,7 @@
                 "login"
               ]
             },
+            "description": "Log in\n\nExchanges credentials for an access token, and sets the refresh cookie.\n\nA wrong username and a wrong password answer the same way, and take the same time,\nso neither reveals which accounts exist. The attempt is recorded in the audit log\nwith the username that was tried — never the password.\n",
             "auth": {
               "type": "noauth"
             },
@@ -224,7 +221,6 @@
                   "const body = pm.response.json();",
                   "if (pm.response.code === 200 && body.data) {",
                   "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
                   "  pm.collectionVariables.set('userId', body.data.user.id);",
                   "}"
                 ]
@@ -233,7 +229,7 @@
           ]
         },
         {
-          "name": "Login (admin)",
+          "name": "Log in as admin",
           "request": {
             "method": "POST",
             "header": [
@@ -254,7 +250,10 @@
                 "login"
               ]
             },
-            "description": "Logs in the admin account created by `npm run seed:admin` and stores `adminAccessToken`, `adminRefreshToken`, `adminUserId`.",
+            "description": "Signs in the account created by `npm run seed:admin` and stores its token as `adminAccessToken`, which every request under Admin uses.",
+            "auth": {
+              "type": "noauth"
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
@@ -263,9 +262,6 @@
                   "language": "json"
                 }
               }
-            },
-            "auth": {
-              "type": "noauth"
             }
           },
           "event": [
@@ -277,9 +273,7 @@
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
                   "if (pm.response.code === 200 && body.data) {",
-                  "  pm.test('User is admin', () => pm.expect(body.data.user.role).to.eql('admin'));",
                   "  pm.collectionVariables.set('adminAccessToken', body.data.accessToken);",
-                  "  pm.collectionVariables.set('adminRefreshToken', body.data.refreshToken);",
                   "  pm.collectionVariables.set('adminUserId', body.data.user.id);",
                   "}"
                 ]
@@ -288,15 +282,10 @@
           ]
         },
         {
-          "name": "Refresh Token",
+          "name": "Renew the session",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/refresh",
               "host": [
@@ -309,18 +298,9 @@
                 "refresh"
               ]
             },
-            "description": "Rotates the refresh token: the old one is deleted and a new access + refresh token pair is returned.",
+            "description": "Renew the session\n\nReads the refresh cookie, issues a new access token and rotates the cookie. Send it\nwith credentials; there is no request body.\n\nRotation is single-use: the token in the cookie is invalidated as it is exchanged.\nPresenting an already-exchanged token means it was copied, so the whole session is\nrevoked and `auth.refresh_token_reuse` is recorded in the audit log.\n",
             "auth": {
               "type": "noauth"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -333,7 +313,6 @@
                   "const body = pm.response.json();",
                   "if (pm.response.code === 200 && body.data) {",
                   "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
                   "}"
                 ]
               }
@@ -341,45 +320,10 @@
           ]
         },
         {
-          "name": "Get Current User",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/me",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "me"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Logout",
+          "name": "Log out of this session",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/logout",
               "host": [
@@ -392,18 +336,9 @@
                 "logout"
               ]
             },
-            "description": "Revokes the given refresh token.",
+            "description": "Log out of this session\n\nRevokes the session the refresh cookie belongs to and clears the cookie. Answers\n`200` even without a cookie, so a client can always finish signing out.\n",
             "auth": {
               "type": "noauth"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -419,7 +354,7 @@
           ]
         },
         {
-          "name": "Logout All Sessions",
+          "name": "Log out everywhere",
           "request": {
             "method": "POST",
             "header": [],
@@ -435,7 +370,38 @@
                 "logout-all"
               ]
             },
-            "description": "Revokes every refresh token for the current user."
+            "description": "Log out everywhere\n\nDeletes every refresh token of the signed-in account and clears the cookie."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The signed-in account",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "The signed-in account"
           },
           "event": [
             {
@@ -455,47 +421,7 @@
       "name": "Users",
       "item": [
         {
-          "name": "List Users",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/users",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users"
-              ]
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "description": "Admin only."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Get User",
+          "name": "Your account",
           "request": {
             "method": "GET",
             "header": [],
@@ -511,7 +437,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "Your own account, including the 5 most recent purchases as `recentPurchases`. Returns 403 for another user's id."
+            "description": "Your account\n\nThe account the token belongs to, with its five most recent purchases. Any other id\nanswers `403`, for an admin token too — `/admin/users/{id}` is the way to read\nanother account.\n"
           },
           "event": [
             {
@@ -526,63 +452,9 @@
           ]
         },
         {
-          "name": "Create User",
+          "name": "Update your profile",
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/users",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users"
-              ]
-            },
-            "description": "All four fields are required. Admin only.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"username\": \"janesmith\",\n  \"password\": \"pass1234\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Update User",
-          "request": {
-            "method": "PUT",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -601,10 +473,10 @@
                 "{{userId}}"
               ]
             },
-            "description": "Send at least one of `firstName`, `lastName`, `username`, `password`. Only works on your own account (403 otherwise).",
+            "description": "Update your profile\n\nChanges `firstName`, `lastName` or `username` — at least one of them. The role and\nthe password are not accepted here: the password has its own route below, so a\nprofile update can never change credentials or privileges.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\"\n}",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -625,7 +497,7 @@
           ]
         },
         {
-          "name": "Delete User",
+          "name": "Close your account",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -641,7 +513,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "Deletes your own account (403 for another user's id). Register again afterwards to keep using the collection."
+            "description": "Close your account\n\nScrubs the profile, deletes the addresses and cart, and ends every session. The row\nitself stays so the orders placed with it keep an owner, and the username is freed\nfor someone else. The account can no longer sign in, and reads answer `404`.\n"
           },
           "event": [
             {
@@ -650,53 +522,73 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change your password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "password"
+              ]
+            },
+            "description": "Change your password\n\nTakes the current password as well as the new one, so a stolen access token alone\ncannot lock the owner out. Every other session of the account ends, and the reply\ncarries a fresh access token and refresh cookie so this client stays signed in.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"pass1234\",\n  \"newPassword\": \"newpass1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 200 && body.data) {",
+                  "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "}"
                 ]
               }
             }
           ]
         }
-      ],
-      "description": "`GET /users` and `POST /users` require an admin token (`{{adminAccessToken}}`, see **Auth → Login (admin)**). Get, update and delete only work on your own account (`{{userId}}` is saved by Login/Register); another user's id returns 403 unless the token belongs to an admin."
+      ]
     },
     {
       "name": "Products",
       "item": [
         {
-          "name": "List Products",
+          "name": "Browse the catalog",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/products",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "List Products by Category",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products?category=Electronics",
+              "raw": "{{baseUrl}}/api/v1/products?limit=50&offset=0&category=Electronics&search=watch",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -706,58 +598,33 @@
                 "products"
               ],
               "query": [
-                {
-                  "key": "category",
-                  "value": "Electronics"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Search Products (paginated)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products?search=wireless&limit=12&offset=0",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products"
-              ],
-              "query": [
-                {
-                  "key": "search",
-                  "value": "wireless",
-                  "description": "Case-insensitive match on name or description"
-                },
                 {
                   "key": "limit",
-                  "value": "12",
-                  "description": "1-100, default 50"
+                  "value": "50",
+                  "description": "Page size. Bounded so one request cannot pull a whole table.",
+                  "disabled": true
                 },
                 {
                   "key": "offset",
-                  "value": "0"
+                  "value": "0",
+                  "description": "Rows to skip.",
+                  "disabled": true
+                },
+                {
+                  "key": "category",
+                  "value": "Electronics",
+                  "description": "Exact category, compared case-insensitively.",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "watch",
+                  "description": "Text to look for in the name or description, case-insensitive.",
+                  "disabled": true
                 }
               ]
             },
-            "description": "One page of matching products. meta.total counts every match, so keep raising offset while offset + data.length < meta.total."
+            "description": "Browse the catalog\n\nProducts that are on sale, newest ids last. Filtering happens on the server, so a\npage only ever holds matching products. Archived products are not listed here.\n"
           },
           "event": [
             {
@@ -772,38 +639,7 @@
           ]
         },
         {
-          "name": "List Product Categories",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products/categories",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "categories"
-              ]
-            },
-            "description": "Every distinct category, sorted."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Most Popular Products",
+          "name": "Most bought products",
           "request": {
             "method": "GET",
             "header": [],
@@ -819,7 +655,7 @@
                 "popular"
               ]
             },
-            "description": "Ranked by total quantity ordered."
+            "description": "Most bought products\n\nThe five products with the highest quantity across **completed** orders, so an order\nthat was never checked out cannot promote a product. Archived products are left out.\n"
           },
           "event": [
             {
@@ -834,7 +670,38 @@
           ]
         },
         {
-          "name": "Get Product",
+          "name": "Every category on sale",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "products",
+                "categories"
+              ]
+            },
+            "description": "Every category on sale\n\nThe distinct categories of products that are on sale, sorted A–Z."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "One product",
           "request": {
             "method": "GET",
             "header": [],
@@ -849,215 +716,8 @@
                 "products",
                 "{{productId}}"
               ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Create Product",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products"
-              ]
             },
-            "description": "`name` and `price` (non-negative number) are required; everything else is optional.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Smart Fitness Tracker Watch\",\n  \"price\": \"129.99\",\n  \"category\": \"Electronics\",\n  \"image\": \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\",\n  \"description\": \"Advanced fitness tracker with heart rate monitor, sleep tracking, GPS, and 7-day battery life.\",\n  \"previewImg\": [\n    \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\",\n    \"https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500\"\n  ],\n  \"types\": [\n    {\n      \"_id\": \"69999b5d6decb17b3853fc1c\",\n      \"productId\": 5001,\n      \"color\": \"Black\",\n      \"quantity\": 60,\n      \"price\": 129.99,\n      \"stock\": 60,\n      \"image\": \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\"\n    },\n    {\n      \"_id\": \"69999b5d6decb17b3853fc1d\",\n      \"productId\": 5002,\n      \"color\": \"Rose Gold\",\n      \"quantity\": 40,\n      \"price\": 139.99,\n      \"stock\": 40,\n      \"image\": \"https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500\"\n    }\n  ],\n  \"reviews\": [\n    {\n      \"_id\": \"69999b5d6decb17b3853fc1f\",\n      \"date\": \"2026-01-08T08:30:00.000Z\",\n      \"star\": 5,\n      \"userId\": \"user135\",\n      \"comment\": \"Excellent fitness tracker!\",\n      \"userName\": \"Jennifer Martinez\"\n    }\n  ],\n  \"overallRating\": 4.7,\n  \"stock\": 100,\n  \"isActive\": true,\n  \"shopId\": \"shop_001\",\n  \"shopName\": \"TechZone Store\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "if (pm.response.code === 201 && body.data) {",
-                  "  pm.collectionVariables.set('productId', body.data.id);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Bulk Create Products",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products/bulk",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "bulk"
-              ]
-            },
-            "description": "Body must be a non-empty array of products. To load the full sample dataset, replace the body with the contents of `app/backend/sample-product-data/products.json`.",
-            "body": {
-              "mode": "raw",
-              "raw": "[\n  {\n    \"name\": \"Smart Fitness Tracker Watch\",\n    \"price\": \"129.99\",\n    \"category\": \"Electronics\",\n    \"image\": \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\",\n    \"description\": \"Advanced fitness tracker with heart rate monitor, sleep tracking, GPS, and 7-day battery life.\",\n    \"previewImg\": [\n      \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\",\n      \"https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500\"\n    ],\n    \"types\": [\n      {\n        \"_id\": \"69999b5d6decb17b3853fc1c\",\n        \"productId\": 5001,\n        \"color\": \"Black\",\n        \"quantity\": 60,\n        \"price\": 129.99,\n        \"stock\": 60,\n        \"image\": \"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500\"\n      },\n      {\n        \"_id\": \"69999b5d6decb17b3853fc1d\",\n        \"productId\": 5002,\n        \"color\": \"Rose Gold\",\n        \"quantity\": 40,\n        \"price\": 139.99,\n        \"stock\": 40,\n        \"image\": \"https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500\"\n      }\n    ],\n    \"reviews\": [\n      {\n        \"_id\": \"69999b5d6decb17b3853fc1f\",\n        \"date\": \"2026-01-08T08:30:00.000Z\",\n        \"star\": 5,\n        \"userId\": \"user135\",\n        \"comment\": \"Excellent fitness tracker!\",\n        \"userName\": \"Jennifer Martinez\"\n      }\n    ],\n    \"overallRating\": 4.7,\n    \"stock\": 100,\n    \"isActive\": true,\n    \"shopId\": \"shop_001\",\n    \"shopName\": \"TechZone Store\"\n  },\n  {\n    \"name\": \"USB-C Laptop Charger 65W\",\n    \"price\": \"39.99\",\n    \"category\": \"Electronics\",\n    \"stock\": 380,\n    \"isActive\": true,\n    \"shopId\": \"shop_001\",\n    \"shopName\": \"TechZone Store\"\n  }\n]",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Update Product",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products/{{productId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "{{productId}}"
-              ]
-            },
-            "description": "Send at least one product field.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"price\": 14.99,\n  \"stock\": 50\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Delete Product",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/products/{{productId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "{{productId}}"
-              ]
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            }
+            "description": "One product\n\nA product that is on sale. An archived product answers `404` here."
           },
           "event": [
             {
@@ -1071,49 +731,18 @@
             }
           ]
         }
-      ],
-      "description": "Reads work with any signed-in user. Create, bulk create, update and delete require an admin token (`{{adminAccessToken}}`, see **Auth → Login (admin)**); a customer token gets 403."
+      ]
     },
     {
       "name": "Orders",
       "item": [
         {
-          "name": "List Orders",
+          "name": "Your orders",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders"
-              ]
-            },
-            "description": "Returns only your own orders."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "List Orders (filtered)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders?status=active&userId={{userId}}",
+              "raw": "{{baseUrl}}/api/v1/orders?limit=50&offset=0&status=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1124,16 +753,25 @@
               ],
               "query": [
                 {
-                  "key": "status",
-                  "value": "active"
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Page size. Bounded so one request cannot pull a whole table.",
+                  "disabled": true
                 },
                 {
-                  "key": "userId",
-                  "value": "{{userId}}"
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Rows to skip.",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             },
-            "description": "`status` must be `active` or `complete`. `userId` is optional and must be your own id."
+            "description": "Your orders\n\nOrders belonging to the token user, newest first, each with the total it was charged.\nThere is no route here that creates or changes an order: checkout creates them, and\n`/admin/orders` is where they are managed.\n"
           },
           "event": [
             {
@@ -1148,7 +786,7 @@
           ]
         },
         {
-          "name": "Get Order",
+          "name": "One of your orders",
           "request": {
             "method": "GET",
             "header": [],
@@ -1163,99 +801,8 @@
                 "orders",
                 "{{orderId}}"
               ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Create Order",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders"
-              ]
             },
-            "description": "Creates an order for the token user. `userId` is optional (defaults to you; 403 if it's another user). `status` defaults to `active`.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"active\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "if (pm.response.code === 201 && body.data) {",
-                  "  pm.collectionVariables.set('orderId', body.data.id);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Update Order Status",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders",
-                "{{orderId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"complete\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "One of your orders\n\nSomeone else's order answers `404`, so its existence is never revealed."
           },
           "event": [
             {
@@ -1270,37 +817,7 @@
           ]
         },
         {
-          "name": "Delete Order",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders",
-                "{{orderId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Get Order Products",
+          "name": "What an order holds",
           "request": {
             "method": "GET",
             "header": [],
@@ -1316,119 +833,8 @@
                 "{{orderId}}",
                 "products"
               ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Add Product to Order",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/products",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders",
-                "{{orderId}}",
-                "products"
-              ]
             },
-            "description": "Returns 200 on success.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"productId\": {{productId}},\n  \"quantity\": 3\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Current Order by User",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/user/{{userId}}/current",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders",
-                "user",
-                "{{userId}}",
-                "current"
-              ]
-            },
-            "description": "`:userId` must be your own id (403 otherwise)."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Completed Orders by User",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/user/{{userId}}/completed",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "orders",
-                "user",
-                "{{userId}}",
-                "completed"
-              ]
-            },
-            "description": "`:userId` must be your own id (403 otherwise)."
+            "description": "What an order holds\n\nThe lines of one of your orders. Each line keeps the price charged at the time\n(`unitPrice`) and the option that was chosen (`typeId`), so a later price change\ndoes not alter the order.\n"
           },
           "event": [
             {
@@ -1442,15 +848,13 @@
             }
           ]
         }
-      ],
-      "description": "Orders are scoped to the user from the access token. Another user's order id returns 404; another user's id in the URL, query or body returns 403."
+      ]
     },
     {
       "name": "Cart",
-      "description": "Cart routes act on the user from the access token.",
       "item": [
         {
-          "name": "Get Cart",
+          "name": "Your cart",
           "request": {
             "method": "GET",
             "header": [],
@@ -1464,7 +868,8 @@
                 "v1",
                 "cart"
               ]
-            }
+            },
+            "description": "Your cart\n\nEvery row in the token user's cart, each with the product it points at."
           },
           "event": [
             {
@@ -1479,7 +884,7 @@
           ]
         },
         {
-          "name": "Add Item to Cart",
+          "name": "Put something in the cart",
           "request": {
             "method": "POST",
             "header": [
@@ -1499,10 +904,10 @@
                 "cart"
               ]
             },
-            "description": "Increments quantity if the same product + type already exists. `quantity` defaults to 1. `typeId`, `selectedType`, `shopId`, `shopName` are optional.",
+            "description": "Put something in the cart\n\nAdds a product, or an option of it named by `typeId`. The same product and option\ntwice adds up the quantities (capped at 999).\n\nThe option, its price and the shop are read from the product; a price or option sent\nin the body is ignored. A product that does not exist or is archived answers `400`.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"productId\": {{productId}},\n  \"quantity\": 2,\n  \"typeId\": \"69999b5d6decb17b3853fc1c\",\n  \"selectedType\": { \"color\": \"Black\", \"price\": 129.99 },\n  \"shopId\": \"shop_001\",\n  \"shopName\": \"TechZone Store\"\n}",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"quantity\": 2,\n  \"typeId\": \"69999b5d6decb17b3853fc1d\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1527,81 +932,7 @@
           ]
         },
         {
-          "name": "Update Cart Item Quantity",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/cart/{{cartItemId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "cart",
-                "{{cartItemId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"quantity\": 5\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Remove Cart Item",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/cart/{{cartItemId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "cart",
-                "{{cartItemId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Clear Cart",
+          "name": "Empty the cart",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -1615,7 +946,8 @@
                 "v1",
                 "cart"
               ]
-            }
+            },
+            "description": "Empty the cart"
           },
           "event": [
             {
@@ -1630,7 +962,7 @@
           ]
         },
         {
-          "name": "Checkout",
+          "name": "Buy the chosen cart rows",
           "request": {
             "method": "POST",
             "header": [
@@ -1651,10 +983,10 @@
                 "checkout"
               ]
             },
-            "description": "Creates a completed order from `items` and clears the cart.",
+            "description": "Buy the chosen cart rows\n\nTurns the cart rows named by `cartItemIds` into one completed order, in a single\ntransaction that locks those rows and the products they point at:\n\n- the quantity comes from the cart row, never from the request;\n- the price comes from the product, or from the chosen option, and is stored on the\n  order line;\n- stock is checked and reduced, for the product and for the option;\n- the rows that were paid for leave the cart, and the rest stay.\n\nAnything that no longer adds up stops the whole checkout with `409` and changes\nnothing: an archived product, an option that is gone, or too little stock.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    { \"productId\": {{productId}}, \"quantity\": 2 }\n  ]\n}",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId}}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1677,15 +1009,90 @@
               }
             }
           ]
+        },
+        {
+          "name": "Change a quantity",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/{{cartItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cart",
+                "{{cartItemId}}"
+              ]
+            },
+            "description": "Change a quantity\n\nA row that is not yours answers `404`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Take a row out of the cart",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/{{cartItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cart",
+                "{{cartItemId}}"
+              ]
+            },
+            "description": "Take a row out of the cart"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
       "name": "Addresses",
-      "description": "Address routes act on the user from the access token.",
       "item": [
         {
-          "name": "List Addresses",
+          "name": "Your addresses",
           "request": {
             "method": "GET",
             "header": [],
@@ -1699,7 +1106,8 @@
                 "v1",
                 "addresses"
               ]
-            }
+            },
+            "description": "Your addresses\n\nThe default address first, then the rest oldest first."
           },
           "event": [
             {
@@ -1714,37 +1122,7 @@
           ]
         },
         {
-          "name": "Get Address",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "addresses",
-                "{{addressId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Create Address",
+          "name": "Save an address",
           "request": {
             "method": "POST",
             "header": [
@@ -1764,10 +1142,10 @@
                 "addresses"
               ]
             },
-            "description": "`fullName`, `address`, `city` are required. `label` is `home` | `work` | `other` (defaults to `home`).",
+            "description": "Save an address\n\nThe first address saved becomes the default one. Saving another with\n`isDefault: true` moves the default over to it.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"John Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"New York\",\n  \"phone\": \"555-1234\",\n  \"label\": \"home\",\n  \"isDefault\": true\n}",
+              "raw": "{\n  \"fullName\": \"Ada Lovelace\",\n  \"phone\": \"0700000000\",\n  \"address\": \"12 Analytical Way\",\n  \"city\": \"London\",\n  \"label\": {},\n  \"isDefault\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1792,9 +1170,40 @@
           ]
         },
         {
-          "name": "Update Address",
+          "name": "One of your addresses",
           "request": {
-            "method": "PUT",
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "addresses",
+                "{{addressId}}"
+              ]
+            },
+            "description": "One of your addresses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change an address",
+          "request": {
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -1813,9 +1222,10 @@
                 "{{addressId}}"
               ]
             },
+            "description": "Change an address\n\nAt least one field. An address that is not yours answers `404` and changes nothing —\nincluding your own default, which the update checks ownership before touching.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"city\": \"Brooklyn\",\n  \"isDefault\": true\n}",
+              "raw": "{\n  \"fullName\": \"Ada Lovelace\",\n  \"phone\": \"0700000000\",\n  \"address\": \"12 Analytical Way\",\n  \"city\": \"London\",\n  \"label\": {},\n  \"isDefault\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1836,7 +1246,7 @@
           ]
         },
         {
-          "name": "Delete Address",
+          "name": "Delete an address",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -1851,7 +1261,8 @@
                 "addresses",
                 "{{addressId}}"
               ]
-            }
+            },
+            "description": "Delete an address\n\nDeleting the default one hands the default to the oldest address that is left."
           },
           "event": [
             {
@@ -1869,10 +1280,9 @@
     },
     {
       "name": "Page Views",
-      "description": "The frontend reports each page the signed-in user opens; each report becomes a PAGE_VIEW entry in the admin audit log.",
       "item": [
         {
-          "name": "Report a Page View",
+          "name": "Report a page the user opened",
           "request": {
             "method": "POST",
             "header": [
@@ -1892,10 +1302,10 @@
                 "page-views"
               ]
             },
-            "description": "`path` is required: the page's own path, starting with `/`, without a query string (max 255). `page` is an optional readable name (max 60).",
+            "description": "Report a page the user opened\n\nThe frontend calls this on each navigation. The row lands in `page_views`, which\nadmins read with `GET /admin/page-views`; it leaves no entry in the audit log.\n",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"path\": \"/products/{{productId}}\",\n  \"page\": \"Product detail\"\n}",
+              "raw": "{\n  \"path\": \"/products/5\",\n  \"page\": \"Product detail\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1919,13 +1329,13 @@
     },
     {
       "name": "Admin",
-      "description": "Every request here requires an admin token (`{{adminAccessToken}}`) — the role is re-checked against the database on each call, and every call is written to the audit log (see Audit Logs). List endpoints accept `limit` (1–100, default 50) and `offset`. Set `targetUserId` to the customer you want to act on.",
+      "description": "Needs an admin token: run *Auth → Log in as admin* first.",
       "item": [
         {
           "name": "Users",
           "item": [
             {
-              "name": "List All Users",
+              "name": "List accounts",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -1943,15 +1353,19 @@
                   "query": [
                     {
                       "key": "limit",
-                      "value": "50"
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
                     },
                     {
                       "key": "offset",
-                      "value": "0"
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
                     }
                   ]
                 },
-                "description": "Every account with its role. Paginated.",
+                "description": "List accounts\n\nEvery open account. Closed accounts are not listed.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -1976,49 +1390,7 @@
               ]
             },
             {
-              "name": "Get Any User",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "admin",
-                    "users",
-                    "{{targetUserId}}"
-                  ]
-                },
-                "description": "Any account, including `recentPurchases`.",
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{adminAccessToken}}",
-                      "type": "string"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Create User (with role)",
+              "name": "Create an account",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2039,7 +1411,7 @@
                     "users"
                   ]
                 },
-                "description": "`role` is `customer` (default) or `admin`. Password must be at least 8 characters.",
+                "description": "Create an account\n\nUnlike self-registration, this may set the role.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2052,7 +1424,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"firstName\": \"Staff\",\n  \"lastName\": \"Member\",\n  \"username\": \"staff1\",\n  \"password\": \"staffpass123\",\n  \"role\": \"admin\"\n}",
+                  "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"username\": \"janedoe\",\n  \"password\": \"pass1234\",\n  \"role\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2066,16 +1438,62 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                      "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (pm.response.code === 201 && body.data) {",
+                      "  pm.collectionVariables.set('targetUserId', body.data.id);",
+                      "}"
                     ]
                   }
                 }
               ]
             },
             {
-              "name": "Update Any User",
+              "name": "One account",
               "request": {
-                "method": "PUT",
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "users",
+                    "{{targetUserId}}"
+                  ]
+                },
+                "description": "One account\n\nThe account with its five most recent purchases. Recorded in the audit log.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update a profile",
+              "request": {
+                "method": "PATCH",
                 "header": [
                   {
                     "key": "Content-Type",
@@ -2095,7 +1513,7 @@
                     "{{targetUserId}}"
                   ]
                 },
-                "description": "Profile fields only — use **Change User Role** for the role.",
+                "description": "Update a profile\n\nProfile fields only. The role and the password have their own routes.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2108,7 +1526,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"firstName\": \"Renamed\"\n}",
+                  "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2129,7 +1547,49 @@
               ]
             },
             {
-              "name": "Change User Role",
+              "name": "Close an account",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "users",
+                    "{{targetUserId}}"
+                  ]
+                },
+                "description": "Close an account\n\nScrubs the profile, deletes the addresses and cart and ends every session, keeping\nthe row so its orders keep an owner. An admin cannot close their own account here.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Change a role",
               "request": {
                 "method": "PUT",
                 "header": [
@@ -2152,7 +1612,7 @@
                     "role"
                   ]
                 },
-                "description": "Sets `customer` or `admin`. Revokes that user's refresh tokens. An admin cannot change their own role.",
+                "description": "Change a role\n\nEnds every session of that account, so the old privilege cannot be renewed. An admin\ncannot change their own role, which keeps the last admin from locking themselves out.\n",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2165,7 +1625,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"role\": \"admin\"\n}",
+                  "raw": "{\n  \"role\": \"customer\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2186,12 +1646,17 @@
               ]
             },
             {
-              "name": "Delete Any User",
+              "name": "Reset a password",
               "request": {
-                "method": "DELETE",
-                "header": [],
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}",
+                  "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}/password",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2200,10 +1665,345 @@
                     "v1",
                     "admin",
                     "users",
-                    "{{targetUserId}}"
+                    "{{targetUserId}}",
+                    "password"
                   ]
                 },
-                "description": "An admin cannot delete their own account here.",
+                "description": "Reset a password\n\nSets a new password without the old one, and ends every session of that account.\nThe admin's own session is untouched.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"newPassword\": \"freshpass1234\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "List every product",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products?limit=50&offset=0&category=&search=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "category",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "List every product\n\nArchived products included, which `/products` leaves out.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Add a product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products"
+                  ]
+                },
+                "description": "Add a product\n\nEvery field is checked, including the entries of `types` and `reviews`, so a\nmalformed value cannot reach the database and break later reads of the catalog.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Smart Fitness Tracker Watch\",\n  \"price\": 1.5,\n  \"category\": \"Electronics\",\n  \"previewImg\": [],\n  \"types\": [],\n  \"reviews\": [],\n  \"overallRating\": 0,\n  \"stock\": 0,\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (pm.response.code === 201 && body.data) {",
+                      "  pm.collectionVariables.set('productId', body.data.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Add many products",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products/bulk",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products",
+                    "bulk"
+                  ]
+                },
+                "description": "Add many products\n\nTakes an array of 1–500 products and saves them in one transaction: if one of them\nis wrong, none of them are saved.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "[\n  {\n    \"name\": \"Smart Fitness Tracker Watch\",\n    \"price\": 1.5,\n    \"category\": \"Electronics\",\n    \"previewImg\": [],\n    \"types\": [],\n    \"reviews\": [],\n    \"overallRating\": 0,\n    \"stock\": 0,\n    \"isActive\": true\n  }\n]",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "One product, archived or not",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products",
+                    "{{productId}}"
+                  ]
+                },
+                "description": "One product, archived or not",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Change a product",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products",
+                    "{{productId}}"
+                  ]
+                },
+                "description": "Change a product\n\nChanges only the fields it is given — at least one of them. Setting\n`isActive: true` puts an archived product back on sale.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Smart Fitness Tracker Watch\",\n  \"price\": 1.5,\n  \"category\": \"Electronics\",\n  \"previewImg\": [],\n  \"types\": [],\n  \"reviews\": [],\n  \"overallRating\": 0,\n  \"stock\": 0,\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Archive a product",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/products/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "products",
+                    "{{productId}}"
+                  ]
+                },
+                "description": "Archive a product\n\nTakes the product off sale (`isActive: false`) instead of deleting the row, so the\norder lines that point at it keep working. `PATCH` with `isActive: true` undoes it.\n",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2233,12 +2033,12 @@
           "name": "Orders",
           "item": [
             {
-              "name": "List All Orders",
+              "name": "List orders",
               "request": {
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/orders?status=active&userId={{targetUserId}}&limit=50&offset=0",
+                  "raw": "{{baseUrl}}/api/v1/admin/orders?limit=50&offset=0&status=&userId=",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2250,24 +2050,30 @@
                   ],
                   "query": [
                     {
-                      "key": "status",
-                      "value": "active"
-                    },
-                    {
-                      "key": "userId",
-                      "value": "{{targetUserId}}"
-                    },
-                    {
                       "key": "limit",
-                      "value": "50"
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
                     },
                     {
                       "key": "offset",
-                      "value": "0"
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "userId",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
-                "description": "Orders from every user. Optional `status` (`active` | `complete`) and `userId` filters. Paginated.",
+                "description": "List orders\n\nEvery user's orders, newest first, each with its total.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2292,7 +2098,7 @@
               ]
             },
             {
-              "name": "Create Order For User",
+              "name": "Open an order for a user",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2313,7 +2119,7 @@
                     "orders"
                   ]
                 },
-                "description": "`userId` is required; `status` defaults to `active`.",
+                "description": "Open an order for a user\n\nCreates an empty order. Lines are added with the route below.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2326,7 +2132,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": \"{{targetUserId}}\",\n  \"status\": \"active\"\n}",
+                  "raw": "{\n  \"userId\": {{targetUserId}},\n  \"status\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2342,14 +2148,16 @@
                     "exec": [
                       "pm.test('Status is 201', () => pm.response.to.have.status(201));",
                       "const body = pm.response.json();",
-                      "if (body.data && body.data.id) pm.collectionVariables.set('adminOrderId', body.data.id);"
+                      "if (pm.response.code === 201 && body.data) {",
+                      "  pm.collectionVariables.set('adminOrderId', body.data.id);",
+                      "}"
                     ]
                   }
                 }
               ]
             },
             {
-              "name": "Get Any Order",
+              "name": "One order",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -2366,7 +2174,7 @@
                     "{{adminOrderId}}"
                   ]
                 },
-                "description": "Any order by id.",
+                "description": "One order",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2391,9 +2199,9 @@
               ]
             },
             {
-              "name": "Update Any Order",
+              "name": "Change an order's status",
               "request": {
-                "method": "PUT",
+                "method": "PATCH",
                 "header": [
                   {
                     "key": "Content-Type",
@@ -2413,7 +2221,7 @@
                     "{{adminOrderId}}"
                   ]
                 },
-                "description": "`status` is `active` or `complete`.",
+                "description": "Change an order's status",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2447,107 +2255,7 @@
               ]
             },
             {
-              "name": "Get Any Order Products",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/orders/{{adminOrderId}}/products",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "admin",
-                    "orders",
-                    "{{adminOrderId}}",
-                    "products"
-                  ]
-                },
-                "description": "Products in any order.",
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{adminAccessToken}}",
-                      "type": "string"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Add Product To Any Order",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/orders/{{adminOrderId}}/products",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "admin",
-                    "orders",
-                    "{{adminOrderId}}",
-                    "products"
-                  ]
-                },
-                "description": "Adds a product line to any order.",
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{adminAccessToken}}",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Delete Any Order",
+              "name": "Delete an order",
               "request": {
                 "method": "DELETE",
                 "header": [],
@@ -2564,67 +2272,7 @@
                     "{{adminOrderId}}"
                   ]
                 },
-                "description": "Deletes any order.",
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{adminAccessToken}}",
-                      "type": "string"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "Carts",
-          "item": [
-            {
-              "name": "List All Cart Items",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/carts?userId={{targetUserId}}&limit=50&offset=0",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "admin",
-                    "carts"
-                  ],
-                  "query": [
-                    {
-                      "key": "userId",
-                      "value": "{{targetUserId}}"
-                    },
-                    {
-                      "key": "limit",
-                      "value": "50"
-                    },
-                    {
-                      "key": "offset",
-                      "value": "0"
-                    }
-                  ]
-                },
-                "description": "Cart items from every user, joined with product data. Optional `userId` filter. Paginated.",
+                "description": "Delete an order\n\nDeletes the order and its lines. Stock is not put back.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2649,7 +2297,172 @@
               ]
             },
             {
-              "name": "Get User Cart",
+              "name": "What an order holds",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/orders/{{adminOrderId}}/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "orders",
+                    "{{adminOrderId}}",
+                    "products"
+                  ]
+                },
+                "description": "What an order holds",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Add a line to an order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/orders/{{adminOrderId}}/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "orders",
+                    "{{adminOrderId}}",
+                    "products"
+                  ]
+                },
+                "description": "Add a line to an order\n\nThe line keeps the price the product carries right now, the same way checkout does.\nNaming a `typeId` takes that option's price instead. Stock is not changed.\n",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": {{productId}},\n  \"quantity\": 2,\n  \"typeId\": \"69999b5d6decb17b3853fc1d\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Carts",
+          "item": [
+            {
+              "name": "List cart rows",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/carts?limit=50&offset=0&userId=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "carts"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "userId",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "List cart rows\n\nCart rows across every account, optionally narrowed to one user.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "One user's cart",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -2666,7 +2479,7 @@
                     "{{targetUserId}}"
                   ]
                 },
-                "description": "One user's full cart.",
+                "description": "One user's cart",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2691,7 +2504,7 @@
               ]
             },
             {
-              "name": "Add Item To User Cart",
+              "name": "Put something in a user's cart",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2713,7 +2526,7 @@
                     "{{targetUserId}}"
                   ]
                 },
-                "description": "Same body as `POST /cart`; increments quantity if the item already exists.",
+                "description": "Put something in a user's cart",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2726,7 +2539,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}",
+                  "raw": "{\n  \"productId\": {{productId}},\n  \"quantity\": 2,\n  \"typeId\": \"69999b5d6decb17b3853fc1d\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2742,14 +2555,16 @@
                     "exec": [
                       "pm.test('Status is 201', () => pm.response.to.have.status(201));",
                       "const body = pm.response.json();",
-                      "if (body.data && body.data.id) pm.collectionVariables.set('adminCartItemId', body.data.id);"
+                      "if (pm.response.code === 201 && body.data) {",
+                      "  pm.collectionVariables.set('adminCartItemId', body.data.id);",
+                      "}"
                     ]
                   }
                 }
               ]
             },
             {
-              "name": "Clear User Cart",
+              "name": "Empty a user's cart",
               "request": {
                 "method": "DELETE",
                 "header": [],
@@ -2766,7 +2581,7 @@
                     "{{targetUserId}}"
                   ]
                 },
-                "description": "Removes every item from one user's cart.",
+                "description": "Empty a user's cart",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2791,7 +2606,7 @@
               ]
             },
             {
-              "name": "Get Any Cart Item",
+              "name": "One cart row",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -2808,7 +2623,7 @@
                     "{{adminCartItemId}}"
                   ]
                 },
-                "description": "Any cart item by id.",
+                "description": "One cart row",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2833,9 +2648,9 @@
               ]
             },
             {
-              "name": "Update Any Cart Item",
+              "name": "Change a cart row's quantity",
               "request": {
-                "method": "PUT",
+                "method": "PATCH",
                 "header": [
                   {
                     "key": "Content-Type",
@@ -2855,7 +2670,7 @@
                     "{{adminCartItemId}}"
                   ]
                 },
-                "description": "Sets the quantity of any cart item.",
+                "description": "Change a cart row's quantity",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2889,7 +2704,7 @@
               ]
             },
             {
-              "name": "Delete Any Cart Item",
+              "name": "Remove a cart row",
               "request": {
                 "method": "DELETE",
                 "header": [],
@@ -2906,7 +2721,7 @@
                     "{{adminCartItemId}}"
                   ]
                 },
-                "description": "Removes any cart item.",
+                "description": "Remove a cart row",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2936,12 +2751,12 @@
           "name": "Addresses",
           "item": [
             {
-              "name": "List All Addresses",
+              "name": "List addresses",
               "request": {
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/addresses?userId={{targetUserId}}&limit=50&offset=0",
+                  "raw": "{{baseUrl}}/api/v1/admin/addresses?limit=50&offset=0&userId=",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2953,20 +2768,25 @@
                   ],
                   "query": [
                     {
-                      "key": "userId",
-                      "value": "{{targetUserId}}"
-                    },
-                    {
                       "key": "limit",
-                      "value": "50"
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
                     },
                     {
                       "key": "offset",
-                      "value": "0"
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "userId",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
-                "description": "Addresses from every user. Optional `userId` filter. Paginated.",
+                "description": "List addresses\n\nAddresses across every account, optionally narrowed to one user.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -2991,7 +2811,7 @@
               ]
             },
             {
-              "name": "Create Address For User",
+              "name": "Save an address for a user",
               "request": {
                 "method": "POST",
                 "header": [
@@ -3012,7 +2832,7 @@
                     "addresses"
                   ]
                 },
-                "description": "`userId`, `fullName`, `address`, `city` required; `label` is `home` | `work` | `other`.",
+                "description": "Save an address for a user",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -3025,7 +2845,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": \"{{targetUserId}}\",\n  \"fullName\": \"John Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"New York\",\n  \"phone\": \"555-1234\",\n  \"label\": \"home\",\n  \"isDefault\": true\n}",
+                  "raw": "{\n  \"userId\": {{targetUserId}},\n  \"fullName\": \"Ada Lovelace\",\n  \"phone\": \"0700000000\",\n  \"address\": \"12 Analytical Way\",\n  \"city\": \"London\",\n  \"label\": {},\n  \"isDefault\": false\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3041,14 +2861,16 @@
                     "exec": [
                       "pm.test('Status is 201', () => pm.response.to.have.status(201));",
                       "const body = pm.response.json();",
-                      "if (body.data && body.data.id) pm.collectionVariables.set('adminAddressId', body.data.id);"
+                      "if (pm.response.code === 201 && body.data) {",
+                      "  pm.collectionVariables.set('adminAddressId', body.data.id);",
+                      "}"
                     ]
                   }
                 }
               ]
             },
             {
-              "name": "Get Any Address",
+              "name": "One address",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -3065,7 +2887,7 @@
                     "{{adminAddressId}}"
                   ]
                 },
-                "description": "Any address by id.",
+                "description": "One address",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -3090,9 +2912,9 @@
               ]
             },
             {
-              "name": "Update Any Address",
+              "name": "Change an address",
               "request": {
-                "method": "PUT",
+                "method": "PATCH",
                 "header": [
                   {
                     "key": "Content-Type",
@@ -3112,7 +2934,7 @@
                     "{{adminAddressId}}"
                   ]
                 },
-                "description": "Any subset of the address fields.",
+                "description": "Change an address",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -3125,7 +2947,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"city\": \"Brooklyn\"\n}",
+                  "raw": "{\n  \"fullName\": \"Ada Lovelace\",\n  \"phone\": \"0700000000\",\n  \"address\": \"12 Analytical Way\",\n  \"city\": \"London\",\n  \"label\": {},\n  \"isDefault\": false\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3146,7 +2968,7 @@
               ]
             },
             {
-              "name": "Delete Any Address",
+              "name": "Delete an address",
               "request": {
                 "method": "DELETE",
                 "header": [],
@@ -3163,7 +2985,7 @@
                     "{{adminAddressId}}"
                   ]
                 },
-                "description": "Deletes any address.",
+                "description": "Delete an address",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -3190,15 +3012,15 @@
           ]
         },
         {
-          "name": "Audit Logs",
+          "name": "Activity",
           "item": [
             {
-              "name": "List Audit Logs",
+              "name": "Read the audit log",
               "request": {
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?limit=25&offset=0",
+                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?limit=50&offset=0&userId=&username=&action=LOGIN,LOGIN_FAILED&result=&from=&to=",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3211,70 +3033,55 @@
                   "query": [
                     {
                       "key": "limit",
-                      "value": "25"
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
                     },
                     {
                       "key": "offset",
-                      "value": "0"
-                    }
-                  ]
-                },
-                "description": "Newest first: every request by a signed-in user, plus logins, failed logins, logouts, registrations and replayed refresh tokens. Read-only — no route edits or deletes an entry; entries older than 90 days (`AUDIT_LOG_RETENTION_DAYS`) are deleted by the server. Also filters by `username` (part of a name), `result` (`success` / `failure`) and `from` / `to` (ISO 8601, `to` exclusive).",
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{adminAccessToken}}",
-                      "type": "string"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "One User's Activity",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?userId={{targetUserId}}&limit=50&offset=0",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "admin",
-                    "audit-logs"
-                  ],
-                  "query": [
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
                     {
                       "key": "userId",
-                      "value": "{{targetUserId}}"
+                      "value": "",
+                      "description": "Only this account.",
+                      "disabled": true
                     },
                     {
-                      "key": "limit",
-                      "value": "50"
+                      "key": "username",
+                      "value": "",
+                      "description": "Part of a username, case-insensitive.",
+                      "disabled": true
                     },
                     {
-                      "key": "offset",
-                      "value": "0"
+                      "key": "action",
+                      "value": "LOGIN,LOGIN_FAILED",
+                      "description": "One type, or several separated by commas.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "result",
+                      "value": "",
+                      "description": "`success` is a status below 400, `failure` is 400 and above.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "Oldest moment to include (ISO 8601).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "Newest moment to include, exclusive (ISO 8601).",
+                      "disabled": true
                     }
                   ]
                 },
-                "description": "Everything one user did, newest first.",
+                "description": "Read the audit log\n\nSecurity-relevant events, newest first. Reading the log is itself recorded.\nThere is deliberately no route that edits or deletes an entry.\n",
                 "auth": {
                   "type": "bearer",
                   "bearer": [
@@ -3299,12 +3106,12 @@
               ]
             },
             {
-              "name": "Failed Logins",
+              "name": "Read the page views",
               "request": {
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/admin/audit-logs?action=LOGIN_FAILED&limit=50&offset=0",
+                  "raw": "{{baseUrl}}/api/v1/admin/page-views?limit=50&offset=0&userId=&username=&path=/products&from=&to=",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3312,24 +3119,51 @@
                     "api",
                     "v1",
                     "admin",
-                    "audit-logs"
+                    "page-views"
                   ],
                   "query": [
                     {
-                      "key": "action",
-                      "value": "LOGIN_FAILED"
-                    },
-                    {
                       "key": "limit",
-                      "value": "50"
+                      "value": "50",
+                      "description": "Page size. Bounded so one request cannot pull a whole table.",
+                      "disabled": true
                     },
                     {
                       "key": "offset",
-                      "value": "0"
+                      "value": "0",
+                      "description": "Rows to skip.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "userId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "username",
+                      "value": "",
+                      "description": "Part of a username, case-insensitive.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "path",
+                      "value": "/products",
+                      "description": "Part of a page path, case-insensitive.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
-                "description": "Only entries of these types, comma-separated: CREATE, READ, UPDATE, DELETE, LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY, PAGE_VIEW. A failed login keeps the username that was tried, never the password.",
+                "description": "Read the page views\n\nThe pages of the frontend people opened, newest first.",
                 "auth": {
                   "type": "bearer",
                   "bearer": [

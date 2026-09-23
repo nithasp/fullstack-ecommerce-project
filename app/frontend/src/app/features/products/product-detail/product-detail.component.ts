@@ -132,7 +132,7 @@ export class ProductDetailComponent implements OnInit, OnDestroy {
   }
 
   get currentPrice(): number {
-    return this.selectedType?.price ?? this.product?.price ?? 0;
+    return this.selectedType?.price ?? Number(this.product?.price ?? 0);
   }
 
   get currentStock(): number {

@@ -7,482 +7,432 @@
 > Prefer a browser? With the server running, open **http://localhost:3000/docs** for Swagger UI,
 > backed by [`openapi.yaml`](openapi.yaml) — the same routes, callable from the page.
 
-All responses use the shape `{ "status": <code>, "message": "...", "data": ... }`. Paginated lists (`?limit=` 1–100, default 50, and `?offset=`) add `"meta": { "limit", "offset", "total" }`.
+Every response uses the shape `{ "status": <code>, "message": "...", "data": ... }`, and an error
+adds a `"code"` such as `token_expired` or `not_found`. Paginated lists (`?limit=` 1–100, default
+50, and `?offset=`) add `"meta": { "limit", "offset", "total" }`.
 
-Passwords must be at least 8 characters wherever one is set. A taken username returns `409`; an id that points at nothing (such as an unknown `productId`) returns `400`.
+Money (`price`, `unitPrice`, `total`) comes back as a **string** like `"19.99"`, so no decimal is
+lost on the way.
 
-Every route except `/`, `/auth/register`, `/auth/login`, `/auth/refresh` and `/auth/logout` requires `Authorization: Bearer <accessToken>`.
+## Sessions and cookies
 
-Accounts have a `role` of `customer` (default) or `admin`. Product create/update/delete, `GET /users`, `POST /users` and everything under `/admin` need an **admin** token — a customer token gets `403`. Create the admin once with `npm run seed:admin` (see [Admin](#admin)).
+`register`, `login` and `refresh` return `{ user, accessToken }` in the body and set the refresh
+token as an **HttpOnly cookie**. With cURL, keep a cookie jar so the session survives between
+calls:
+
+```bash
+API=http://localhost:3000/api/v1
+JAR=cookies.txt      # -c writes cookies, -b sends them
+```
+
+Everything else needs the access token: `Authorization: Bearer <accessToken>`. Access tokens last
+15 minutes; `POST /auth/refresh` issues a new one from the cookie.
+
+Accounts have a `role` of `customer` (default) or `admin`. Everything under `/admin` needs an
+admin token — a customer token gets `403`. Create the first admin with `npm run seed:admin`.
+
+Passwords must be at least 8 characters wherever one is set. A taken username returns `409`; an id
+that points at nothing returns `400` or `404`.
 
 ---
 
-## Quick Walkthrough
+## Quick walkthrough
 
 ```bash
-# 1. Create the admin (once) and log in as it; copy data.accessToken
-npm run seed:admin          # uses ADMIN_USERNAME / ADMIN_PASSWORD from .env
-curl -s -X POST http://localhost:3000/api/v1/auth/login \
+API=http://localhost:3000/api/v1
+JAR=cookies.txt
+
+# 1. Create the admin once, then log in as it and copy data.accessToken
+npm run seed:admin                     # uses ADMIN_USERNAME / ADMIN_PASSWORD from .env
+curl -s -c $JAR -X POST $API/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"change-me-to-a-long-password"}'
+  -d '{"username":"admin","password":"your-admin-password"}'
 
 ADMIN_TOKEN="admin.access.token"
 
-# 2. Create products (admin only)
-curl -s -X POST http://localhost:3000/api/v1/products \
+# 2. Add products (admin only)
+curl -s -X POST $API/admin/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Keyboard","price":49.99,"category":"Electronics"}'
+  -d '{"name":"Keyboard","price":49.99,"category":"Electronics","stock":25}'
 
-curl -s -X POST http://localhost:3000/api/v1/products \
+curl -s -X POST $API/admin/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Mouse","price":29.99,"category":"Electronics"}'
+  -d '{"name":"Mouse","price":29.99,"category":"Electronics","stock":40}'
 
-# 3. Register a customer and copy data.accessToken
-curl -s -X POST http://localhost:3000/api/v1/auth/register \
+# 3. Register a customer (its own cookie jar) and copy data.accessToken
+curl -s -c customer.txt -X POST $API/auth/register \
   -H "Content-Type: application/json" \
   -d '{"firstName":"John","lastName":"Doe","username":"johndoe","password":"pass1234"}'
 
-TOKEN="your.access.token"
+TOKEN="customer.access.token"
 
-# 4. Add items to cart and checkout
-curl -s -X POST http://localhost:3000/api/v1/cart \
+# 4. Put things in the cart — the reply carries the cart row id
+curl -s -X POST $API/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
 
-curl -s -X POST http://localhost:3000/api/v1/cart/checkout \
+# 5. Buy the rows you picked (ids from step 4 or from GET /cart)
+curl -s -X POST $API/cart/checkout \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"items":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}]}'
+  -d '{"cartItemIds":[1]}'
 
-# 5. Most popular products
-curl http://localhost:3000/api/v1/products/popular -H "Authorization: Bearer $TOKEN"
+# 6. The order, with what it cost
+curl -s $API/orders -H "Authorization: Bearer $TOKEN"
+
+# 7. Most bought products
+curl -s $API/products/popular -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
-## Health Check
+## Health check
 
 ```bash
 curl http://localhost:3000/
+# { "message": "Storefront API is running!" }
 ```
 
 ---
 
 ## Auth
 
-> `register`, `login` and `refresh` are rate limited to 20 requests per 15 minutes. Access tokens expire after 15 minutes.
-
-**Register** (password must be at least 8 characters; returns `user`, `accessToken`, `refreshToken`; always creates a `customer` — a `role` in the body is ignored):
 ```bash
-curl -X POST http://localhost:3000/api/v1/auth/register \
+# Register — sets the refresh cookie, returns { user, accessToken }
+curl -s -c $JAR -X POST $API/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"firstName":"John","lastName":"Doe","username":"johndoe","password":"pass1234"}'
-```
+  -d '{"username":"johndoe","password":"pass1234","firstName":"John","lastName":"Doe"}'
 
-**Login:**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
+# Log in (firstName/lastName are not needed here)
+curl -s -c $JAR -X POST $API/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"johndoe","password":"pass1234"}'
+
+# Renew the session from the cookie: new access token, rotated cookie
+curl -s -b $JAR -c $JAR -X POST $API/auth/refresh
+
+# The signed-in account
+curl -s $API/auth/me -H "Authorization: Bearer $TOKEN"
+
+# End this session (clears the cookie)
+curl -s -b $JAR -c $JAR -X POST $API/auth/logout
+
+# End every session of the account
+curl -s -b $JAR -c $JAR -X POST $API/auth/logout-all -H "Authorization: Bearer $TOKEN"
 ```
 
-**Refresh access token** (rotates both tokens — the old refresh token stops working, and sending it again later revokes the whole session, including the new token):
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refreshToken":"your.refresh.token"}'
-```
-
-**Get current user:**
-```bash
-curl http://localhost:3000/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
-```
-
-**Logout** (ends this session):
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/logout \
-  -H "Content-Type: application/json" \
-  -d '{"refreshToken":"your.refresh.token"}'
-```
-
-**Logout all sessions:**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/logout-all -H "Authorization: Bearer $TOKEN"
-```
+A username is matched case-insensitively, so `JohnDoe` and `johndoe` are the same account. A
+refresh token works once: sending the same one twice revokes that whole session, and the second
+call answers `401 token_invalid`.
 
 ---
 
 ## Users
 
-> All user routes require `Authorization: Bearer <token>`.
-> Get, update and delete only work on **your own** account — use your id (`data.user.id` from register/login). Another user's id returns `403` (admins are exempt).
-> Listing and creating users require an **admin** token.
+These routes serve the token's own account. Any other id answers `403` — even with an admin
+token, which has `/admin/users` for that.
 
-**List users** (admin; paginated):
 ```bash
-curl "http://localhost:3000/api/v1/users?limit=20&offset=0" -H "Authorization: Bearer $ADMIN_TOKEN"
-```
+# Your account, with your five most recent purchases
+curl -s $API/users/1 -H "Authorization: Bearer $TOKEN"
 
-**Get your user** (includes 5 most recent purchases as `recentPurchases`):
-```bash
-curl http://localhost:3000/api/v1/users/1 -H "Authorization: Bearer $TOKEN"
-```
-
-**Create user** (admin; all four fields required):
-```bash
-curl -X POST http://localhost:3000/api/v1/users \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"firstName":"Jane","lastName":"Smith","username":"janesmith","password":"pass1234"}'
-```
-
-**Update your user** (at least one of `firstName`, `lastName`, `username`, `password`; `role` cannot be changed here):
-```bash
-curl -X PUT http://localhost:3000/api/v1/users/1 \
+# Change your profile (at least one of firstName, lastName, username)
+curl -s -X PATCH $API/users/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"firstName":"Jane"}'
-```
+  -d '{"firstName":"Johnny"}'
 
-**Delete your user:**
-```bash
-curl -X DELETE http://localhost:3000/api/v1/users/1 -H "Authorization: Bearer $TOKEN"
+# Change your password: needs the current one; every other session ends and
+# the reply carries a fresh access token and cookie
+curl -s -b $JAR -c $JAR -X PUT $API/users/1/password \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"currentPassword":"pass1234","newPassword":"newpass1234"}'
+
+# Close your account: profile scrubbed, addresses and cart deleted, sessions ended,
+# orders kept, username freed
+curl -s -X DELETE $API/users/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
 ## Products
 
-> All product routes require `Authorization: Bearer <token>`. Create, bulk create, update and delete require an **admin** token (`403` otherwise).
+Read-only, and limited to products on sale. Managing the catalog is under [Admin · Products](#products-1).
 
-**Create product** (admin; `name` and non-negative `price` required; see [Sample Product Data](#sample-product-data) for more products):
 ```bash
-curl -X POST http://localhost:3000/api/v1/products \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{
-    "name": "Smart Fitness Tracker Watch",
-    "price": "129.99",
-    "category": "Electronics",
-    "image": "https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500",
-    "description": "Advanced fitness tracker with heart rate monitor, sleep tracking, GPS, and 7-day battery life. Compatible with iOS and Android. Track your workouts and health goals effortlessly.",
-    "previewImg": [
-      "https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500",
-      "https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500",
-      "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?w=500"
-    ],
-    "types": [
-      {"_id":"69999b5d6decb17b3853fc1c","productId":5001,"color":"Black","quantity":60,"price":129.99,"stock":60,"image":"https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500"},
-      {"_id":"69999b5d6decb17b3853fc1d","productId":5002,"color":"Rose Gold","quantity":40,"price":139.99,"stock":40,"image":"https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500"},
-      {"_id":"69999b5d6decb17b3853fc1e","productId":5003,"color":"Silver","quantity":45,"price":134.99,"stock":45,"image":"https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?w=500"}
-    ],
-    "reviews": [
-      {"_id":"69999b5d6decb17b3853fc1f","date":"2026-01-08T08:30:00.000Z","star":5,"userId":"user135","comment":"Excellent fitness tracker! Accurate tracking and great battery life.","userName":"Jennifer Martinez"},
-      {"_id":"69999b5d6decb17b3853fc20","date":"2026-01-19T15:10:00.000Z","star":4,"userId":"user864","comment":"Good features for the price. GPS could be more accurate.","userName":"Chris Lee"}
-    ],
-    "overallRating": 4.7,
-    "stock": 145,
-    "isActive": true,
-    "shopId": "shop_001",
-    "shopName": "TechZone Store"
-  }'
-```
+# The catalog, paginated
+curl -s "$API/products?limit=10&offset=0" -H "Authorization: Bearer $TOKEN"
 
-**Bulk create products** (admin) from `sample-product-data/products.json` (run from `app/backend/`). All or nothing — if any product is rejected, none are saved:
-```bash
-curl -X POST http://localhost:3000/api/v1/products/bulk \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d @sample-product-data/products.json
-```
+# Filter by category (exact) or search name and description — both case-insensitive
+curl -s "$API/products?category=Electronics" -H "Authorization: Bearer $TOKEN"
+curl -s "$API/products?search=keyboard" -H "Authorization: Bearer $TOKEN"
 
-**List (paginated) / filter by category / search name and description:**
-```bash
-curl http://localhost:3000/api/v1/products -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/api/v1/products?limit=12&offset=12" -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/api/v1/products?category=Electronics" -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/api/v1/products?search=wireless&category=Electronics" -H "Authorization: Bearer $TOKEN"
-```
+# Every category on sale
+curl -s $API/products/categories -H "Authorization: Bearer $TOKEN"
 
-**Every category** (for filter buttons that don't depend on the current page):
-```bash
-curl http://localhost:3000/api/v1/products/categories -H "Authorization: Bearer $TOKEN"
-```
+# The five most bought products, counting completed orders only
+curl -s $API/products/popular -H "Authorization: Bearer $TOKEN"
 
-**Most popular (ranked by total quantity ordered):**
-```bash
-curl http://localhost:3000/api/v1/products/popular -H "Authorization: Bearer $TOKEN"
-```
-
-**Get / Update (admin) / Delete (admin):**
-```bash
-curl http://localhost:3000/api/v1/products/1 -H "Authorization: Bearer $TOKEN"
-
-curl -X PUT http://localhost:3000/api/v1/products/1 \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"price":14.99,"stock":50}'
-
-curl -X DELETE http://localhost:3000/api/v1/products/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-```
-
----
-
-## Orders
-
-> All order routes require `Authorization: Bearer <token>` and only work on **your own** orders. `status` is `active` or `complete`.
-> Another user's order id returns `404`. Another user's id in the URL, query or body returns `403`. Admin tokens are exempt from both.
-
-**Create order** (created for the token user; `userId` is optional and must be your own id; `status` defaults to `active`):
-```bash
-curl -X POST http://localhost:3000/api/v1/orders \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"status":"active"}'
-```
-
-**Add product to order:**
-```bash
-curl -X POST http://localhost:3000/api/v1/orders/1/products \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"productId":1,"quantity":3}'
-```
-
-**List / filter your orders:**
-```bash
-curl http://localhost:3000/api/v1/orders -H "Authorization: Bearer $TOKEN"
-curl "http://localhost:3000/api/v1/orders?status=active" -H "Authorization: Bearer $TOKEN"
-```
-
-**Get / Update / Delete:**
-```bash
-curl http://localhost:3000/api/v1/orders/1 -H "Authorization: Bearer $TOKEN"
-curl http://localhost:3000/api/v1/orders/1/products -H "Authorization: Bearer $TOKEN"
-
-curl -X PUT http://localhost:3000/api/v1/orders/1 \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"status":"complete"}'
-
-curl -X DELETE http://localhost:3000/api/v1/orders/1 -H "Authorization: Bearer $TOKEN"
-```
-
-**Your order queries** (`:userId` must be your own id):
-```bash
-curl http://localhost:3000/api/v1/orders/user/1/current   -H "Authorization: Bearer $TOKEN"
-curl http://localhost:3000/api/v1/orders/user/1/completed -H "Authorization: Bearer $TOKEN"
+# One product (an archived one answers 404)
+curl -s $API/products/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
 ## Cart
 
-> All cart routes require `Authorization: Bearer <token>` and act on the user from the token.
-
-**Get cart:**
 ```bash
-curl http://localhost:3000/api/v1/cart -H "Authorization: Bearer $TOKEN"
-```
+# What is in the cart, each row with its product
+curl -s $API/cart -H "Authorization: Bearer $TOKEN"
 
-**Add item** (increments quantity if same product+type already exists; `quantity` defaults to 1; `typeId`, `selectedType`, `shopId`, `shopName` are optional):
-```bash
-curl -X POST http://localhost:3000/api/v1/cart \
+# Add a product; adding the same one again adds up the quantity
+curl -s -X POST $API/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"productId":1,"quantity":2,"typeId":"69999b5d6decb17b3853fc1c","selectedType":{"color":"Black","price":129.99},"shopId":"shop_001","shopName":"TechZone Store"}'
-```
+  -d '{"productId":1,"quantity":2}'
 
-**Update item quantity:**
-```bash
-curl -X PUT http://localhost:3000/api/v1/cart/1 \
+# Add a specific option of a product — its price and stock come from the product
+curl -s -X POST $API/cart \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"quantity":5}'
-```
+  -d '{"productId":1,"quantity":1,"typeId":"69999b5d6decb17b3853fc1d"}'
 
-**Remove item:**
-```bash
-curl -X DELETE http://localhost:3000/api/v1/cart/1 -H "Authorization: Bearer $TOKEN"
-```
-
-**Clear cart:**
-```bash
-curl -X DELETE http://localhost:3000/api/v1/cart -H "Authorization: Bearer $TOKEN"
-```
-
-**Checkout** (creates a completed order from `items` and clears the cart):
-```bash
-curl -X POST http://localhost:3000/api/v1/cart/checkout \
+# Change a quantity / remove a row / empty the cart
+curl -s -X PATCH $API/cart/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"items":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}]}'
+  -d '{"quantity":3}'
+curl -s -X DELETE $API/cart/1 -H "Authorization: Bearer $TOKEN"
+curl -s -X DELETE $API/cart -H "Authorization: Bearer $TOKEN"
+
+# Buy the rows you picked: quantities come from the cart, prices and stock from the
+# products, and only those rows leave the cart
+curl -s -X POST $API/cart/checkout \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"cartItemIds":[1,2]}'
+```
+
+Checkout answers `409` and changes nothing when a product was archived, an option is gone, stock
+is short, or one of the ids is not in your cart:
+
+```json
+{ "status": 409, "message": "Only 2 left of \"Keyboard\"", "data": null, "code": "conflict" }
+```
+
+---
+
+## Orders
+
+Checkout creates them; they are read-only here. Someone else's order answers `404`.
+
+```bash
+# Your orders, newest first, each with its total
+curl -s "$API/orders?limit=10" -H "Authorization: Bearer $TOKEN"
+curl -s "$API/orders?status=complete" -H "Authorization: Bearer $TOKEN"
+
+# One order, and what it holds (each line keeps the price paid)
+curl -s $API/orders/1 -H "Authorization: Bearer $TOKEN"
+curl -s $API/orders/1/products -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
 ## Addresses
 
-> All address routes require `Authorization: Bearer <token>` and act on the user from the token.
-
-**List addresses:**
 ```bash
-curl http://localhost:3000/api/v1/addresses -H "Authorization: Bearer $TOKEN"
-```
+# Your addresses, default first
+curl -s $API/addresses -H "Authorization: Bearer $TOKEN"
+curl -s $API/addresses/1 -H "Authorization: Bearer $TOKEN"
 
-**Get address:**
-```bash
-curl http://localhost:3000/api/v1/addresses/1 -H "Authorization: Bearer $TOKEN"
-```
-
-**Create address** (`fullName`, `address`, `city` required; `label` is `home` | `work` | `other`, defaults to `home`):
-```bash
-curl -X POST http://localhost:3000/api/v1/addresses \
+# Save one — the first address saved becomes the default
+curl -s -X POST $API/addresses \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"fullName":"John Doe","address":"123 Main St","city":"New York","phone":"555-1234","label":"home","isDefault":true}'
-```
+  -d '{"fullName":"John Doe","phone":"0700000000","address":"12 Main Street","city":"London","label":"home","isDefault":true}'
 
-**Update address:**
-```bash
-curl -X PUT http://localhost:3000/api/v1/addresses/1 \
+# Change one (at least one field) / delete one
+curl -s -X PATCH $API/addresses/1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"city":"Brooklyn","isDefault":true}'
+  -d '{"city":"Oxford"}'
+curl -s -X DELETE $API/addresses/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-**Delete address:**
-```bash
-curl -X DELETE http://localhost:3000/api/v1/addresses/1 -H "Authorization: Bearer $TOKEN"
-```
+Deleting the default address hands the default to the oldest one left.
 
 ---
 
-## Page Views
-
-The frontend reports each page a signed-in user opens; it shows up in the admin audit log as a `PAGE_VIEW` entry. `path` is the page's own path (no query string); `page` is an optional readable name.
+## Page views
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/page-views \
+# The frontend reports each page a signed-in user opens
+curl -s -X POST $API/page-views \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"path":"/products/5","page":"Product detail"}'
 ```
+
+These land in `page_views`, read by admins at `GET /admin/page-views`. They are not part of the
+audit log.
 
 ---
 
 ## Admin
 
-> Every `/admin` route requires an **admin** token. The role is re-checked in the database on each call (a demoted admin is blocked immediately). Like every signed-in request, each call is written to the audit log (see [Audit log](#audit-log) below).
-> List routes accept `?limit=` (1–100, default 50) and `?offset=`.
-
-**Create the first admin** (self-registration can never create one). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (12+ characters) in `.env`, then:
-```bash
-npm run seed:admin
-```
-Then log in with those credentials at `POST /auth/login` and use the returned `accessToken` as `$ADMIN_TOKEN`. A customer token on any admin route returns `403 Admin access required`.
+Every route needs an admin token, and the role is re-read from the database on each request.
+List routes are paginated.
 
 ### Users
+
 ```bash
-# List every user (with role), paginated
-curl "http://localhost:3000/api/v1/admin/users?limit=50&offset=0" -H "Authorization: Bearer $ADMIN_TOKEN"
+# Every open account
+curl -s "$API/admin/users?limit=20" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Any user, with recentPurchases
-curl http://localhost:3000/api/v1/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+# One account, with its recent purchases
+curl -s $API/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Create a user with an explicit role (customer | admin)
-curl -X POST http://localhost:3000/api/v1/admin/users \
+# Create an account with a role (customer | admin)
+curl -s -X POST $API/admin/users \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"firstName":"Staff","lastName":"Member","username":"staff1","password":"staffpass123","role":"admin"}'
+  -d '{"firstName":"Jane","lastName":"Doe","username":"janedoe","password":"pass1234","role":"admin"}'
 
-# Update any user's profile fields
-curl -X PUT http://localhost:3000/api/v1/admin/users/2 \
+# Profile fields of any account
+curl -s -X PATCH $API/admin/users/2 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"firstName":"Renamed"}'
+  -d '{"lastName":"Smith"}'
 
-# Change a role (revokes that user's refresh tokens; you cannot change your own role)
-curl -X PUT http://localhost:3000/api/v1/admin/users/2/role \
+# Change a role — ends that account's sessions; you cannot change your own
+curl -s -X PUT $API/admin/users/2/role \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"role":"admin"}'
 
-# Delete any user (you cannot delete your own account here)
-curl -X DELETE http://localhost:3000/api/v1/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+# Reset a password without the old one — ends that account's sessions
+curl -s -X PUT $API/admin/users/2/password \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"newPassword":"freshpass1234"}'
+
+# Close an account (keeps its orders); you cannot close your own here
+curl -s -X DELETE $API/admin/users/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### Products
+
+```bash
+# Every product, archived ones included
+curl -s "$API/admin/products?limit=20" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s $API/admin/products/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Add one. Options each carry their own price and stock
+curl -s -X POST $API/admin/products \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Keyboard","price":49.99,"category":"Electronics","stock":25,
+       "types":[{"_id":"black","color":"Black","price":49.99,"stock":15},
+                {"_id":"white","color":"White","price":54.99,"stock":10}]}'
+
+# Add many at once — one bad product rejects the whole import
+curl -s -X POST $API/admin/products/bulk \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '[{"name":"Mouse","price":29.99},{"name":"Monitor","price":199.00}]'
+
+# Change only the fields you send
+curl -s -X PATCH $API/admin/products/1 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"price":44.99,"stock":30}'
+
+# Archive it (isActive: false) — the row stays, so past orders keep it
+curl -s -X DELETE $API/admin/products/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Put it back on sale
+curl -s -X PATCH $API/admin/products/1 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"isActive":true}'
 ```
 
 ### Orders
-```bash
-# Every order from every user; optional ?status= and ?userId=
-curl "http://localhost:3000/api/v1/admin/orders?status=active&userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Create an order for a user
-curl -X POST http://localhost:3000/api/v1/admin/orders \
+```bash
+# Every order; optional ?status= and ?userId=
+curl -s "$API/admin/orders?status=complete&limit=20" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s $API/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Open an order for a user, then add lines (priced from the product now)
+curl -s -X POST $API/admin/orders \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"userId":2,"status":"active"}'
 
-# Get / update / delete any order, and manage its products
-curl http://localhost:3000/api/v1/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/api/v1/admin/orders/1 \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"status":"complete"}'
-curl http://localhost:3000/api/v1/admin/orders/1/products -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X POST http://localhost:3000/api/v1/admin/orders/1/products \
+curl -s -X POST $API/admin/orders/1/products \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
-curl -X DELETE http://localhost:3000/api/v1/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+
+curl -s $API/admin/orders/1/products -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Change the status / delete the order and its lines
+curl -s -X PATCH $API/admin/orders/1 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"status":"complete"}'
+curl -s -X DELETE $API/admin/orders/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Carts
-```bash
-# Every user's cart items (joined with product data); optional ?userId=
-curl "http://localhost:3000/api/v1/admin/carts?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# One user's cart / add an item to it / clear it
-curl http://localhost:3000/api/v1/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X POST http://localhost:3000/api/v1/admin/carts/2 \
+```bash
+# Cart rows across accounts; optional ?userId=
+curl -s "$API/admin/carts?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# One account's cart / add to it / empty it
+curl -s $API/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s -X POST $API/admin/carts/2 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"productId":1,"quantity":2}'
-curl -X DELETE http://localhost:3000/api/v1/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s -X DELETE $API/admin/carts/2 -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Any single cart item by id
-curl http://localhost:3000/api/v1/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/api/v1/admin/cart-items/1 \
+# One cart row by id
+curl -s $API/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s -X PATCH $API/admin/cart-items/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"quantity":5}'
-curl -X DELETE http://localhost:3000/api/v1/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s -X DELETE $API/admin/cart-items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Addresses
+
 ```bash
-# Every user's addresses; optional ?userId=
-curl "http://localhost:3000/api/v1/admin/addresses?userId=2&limit=50" -H "Authorization: Bearer $ADMIN_TOKEN"
+# Addresses across accounts; optional ?userId=
+curl -s "$API/admin/addresses?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s $API/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Create an address for a user
-curl -X POST http://localhost:3000/api/v1/admin/addresses \
+# Save one for a user, change it, delete it
+curl -s -X POST $API/admin/addresses \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"userId":2,"fullName":"John Doe","address":"123 Main St","city":"New York","label":"home","isDefault":true}'
-
-# Get / update / delete any address
-curl http://localhost:3000/api/v1/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
-curl -X PUT http://localhost:3000/api/v1/admin/addresses/1 \
+  -d '{"userId":2,"fullName":"Jane Doe","address":"5 High Street","city":"Leeds"}'
+curl -s -X PATCH $API/admin/addresses/1 \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"city":"Brooklyn"}'
-curl -X DELETE http://localhost:3000/api/v1/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+  -d '{"isDefault":true}'
+curl -s -X DELETE $API/admin/addresses/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Audit log
 
-Every request a signed-in user makes, plus logins, failed logins, logouts, registrations, replayed refresh tokens and the frontend pages people open. Newest first. Read-only: there is no route that edits or deletes an entry, and entries older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted by the server.
+Security-relevant events, newest first. Read-only: no route edits or deletes an entry, and rows
+older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted daily.
 
 ```bash
 # The newest entries
-curl "http://localhost:3000/api/v1/admin/audit-logs?limit=25" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s "$API/admin/audit-logs?limit=25" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# One user's entries (or ?username=ali for any username containing "ali")
-curl "http://localhost:3000/api/v1/admin/audit-logs?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+# One account's entries, or any username containing "ali"
+curl -s "$API/admin/audit-logs?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s "$API/admin/audit-logs?username=ali" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Only some types (comma-separated): CREATE, READ, UPDATE, DELETE, LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY, PAGE_VIEW
-curl "http://localhost:3000/api/v1/admin/audit-logs?action=LOGIN,LOGIN_FAILED" -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Which pages of the app one user opened
-curl "http://localhost:3000/api/v1/admin/audit-logs?userId=2&action=PAGE_VIEW" -H "Authorization: Bearer $ADMIN_TOKEN"
+# Only some types (comma-separated): CREATE, READ, UPDATE, DELETE,
+# LOGIN, LOGIN_FAILED, LOGOUT, REGISTER, SECURITY
+curl -s "$API/admin/audit-logs?action=LOGIN,LOGIN_FAILED" -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Only failed requests (status 400 and above) in a time range; `to` is exclusive
-curl "http://localhost:3000/api/v1/admin/audit-logs?result=failure&from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:00Z" \
+curl -s "$API/admin/audit-logs?result=failure&from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-An entry looks like this:
+One entry looks like this:
+
 ```json
 {
-  "id": 1042,
-  "createdAt": "2026-09-22T10:41:30.512Z",
+  "id": 42,
+  "createdAt": "2026-09-22T10:42:05.000Z",
   "userId": 7,
-  "username": "alice",
+  "username": "johndoe",
   "userRole": "customer",
   "action": "CREATE",
   "event": "cart.item_added",
@@ -490,31 +440,54 @@ An entry looks like this:
   "path": "/api/v1/cart",
   "statusCode": 201,
   "ipAddress": "203.0.113.5",
-  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...",
+  "userAgent": "Mozilla/5.0 ...",
   "details": { "productId": 5, "quantity": 2 }
 }
 ```
 
----
+`details` keeps a few non-secret facts only — ids, quantities, or the names of the fields an
+update carried. Never a password, a token or a whole request body.
 
-## Sample Product Data
+### Page views
 
-Use `POST /products/bulk` to insert all products in a **single request** (requires an admin `$ADMIN_TOKEN`).
-This dataset covers multiple categories and includes variant types, reviews, and stock info.
+```bash
+# The pages people opened, newest first
+curl -s "$API/admin/page-views?limit=25" -H "Authorization: Bearer $ADMIN_TOKEN"
 
-**PowerShell (Windows)** — run from `app/backend/`:
-```powershell
-$ADMIN_TOKEN = "admin.access.token"
-$body = Get-Content -Raw "sample-product-data/products.json"
-Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/v1/products/bulk `
-  -Headers @{ Authorization="Bearer $ADMIN_TOKEN"; "Content-Type"="application/json" } `
-  -Body $body
+# One account, or every view of a path
+curl -s "$API/admin/page-views?userId=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s "$API/admin/page-views?path=/products" -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# A time range; `to` is exclusive
+curl -s "$API/admin/page-views?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-**cURL add all sample product data from sample-product-data/products.json**
+---
+
+## Errors you will meet
+
+| Status | `code` | When |
+| ------ | ------ | ---- |
+| 400 | `invalid_request` | A field is missing or wrong — `message` names it, e.g. `quantity must be a whole number between 1 and 999` |
+| 401 | `no_token` / `token_expired` / `token_invalid` | No `Authorization` header, an expired access token, or one that does not check out |
+| 401 | `invalid_credentials` | Wrong username or password, or a wrong `currentPassword` |
+| 403 | `forbidden` | Someone else's account, or a customer token on `/admin` |
+| 404 | `not_found` | Nothing with that id — or it belongs to someone else |
+| 409 | `conflict` | A taken username, or a checkout that no longer adds up |
+| 413 | `invalid_request` | Body over `JSON_BODY_LIMIT` (1 MB by default) |
+| 429 | `rate_limited` | Too many requests from this IP |
+| 500 | `internal_error` | Something went wrong; the details are in the server log under the `X-Request-Id` of the response |
+
+---
+
+## Sample product data
+
+[`sample-product-data/products.json`](sample-product-data/products.json) holds nine products with
+options, reviews and images. Import them all at once:
+
 ```bash
-curl -X POST http://localhost:3000/api/v1/products/bulk \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d @sample-product-data/products.json
+curl -s -X POST $API/admin/products/bulk \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  --data-binary @sample-product-data/products.json
 ```

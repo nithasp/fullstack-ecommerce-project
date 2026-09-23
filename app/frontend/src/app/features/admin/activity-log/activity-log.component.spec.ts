@@ -56,13 +56,11 @@ describe('ActivityLogComponent', () => {
     fixture.detectChanges();
   });
 
-  it('should load the first page with page views and API reads hidden', () => {
+  it('should load the first page with reads hidden', () => {
     expect(lastQuery()).toEqual(jasmine.objectContaining({ limit: ACTIVITY_PAGE_SIZE, offset: 0 }));
     expect(lastQuery().actions?.length).toBe(8);
     expect(lastQuery().actions).not.toContain('READ');
-    expect(lastQuery().actions).not.toContain('PAGE_VIEW');
     expect(component.actionOptions).not.toContain('READ');
-    expect(component.actionOptions).not.toContain('PAGE_VIEW');
   });
 
   it('should render one row per entry with who, the type, the event and the result', () => {
@@ -75,15 +73,12 @@ describe('ActivityLogComponent', () => {
     expect(rows[1].querySelector('.activity-log__result--failed').textContent).toContain('403');
   });
 
-  it('should let each checkbox add its own type, and ask for every type once both are ticked', () => {
-    component.setShown('showPageViews', true);
-    expect(lastQuery().actions).toContain('PAGE_VIEW');
+  it('should ask for every type once reads are ticked', () => {
     expect(lastQuery().actions).not.toContain('READ');
 
     component.setShown('showApiReads', true);
     expect(lastQuery().actions).toBeUndefined();
     expect(component.actionOptions).toContain('READ');
-    expect(component.actionOptions).toContain('PAGE_VIEW');
   });
 
   it('should drop a type as the chosen one when its checkbox is cleared again', () => {
@@ -96,27 +91,18 @@ describe('ActivityLogComponent', () => {
     expect(lastQuery().actions).not.toContain('READ');
   });
 
-  it('should keep the chosen type when the other checkbox changes', () => {
-    component.setShown('showPageViews', true);
-    component.setFilter('action', 'PAGE_VIEW');
+  it('should keep a chosen type that stays available', () => {
+    component.setFilter('action', 'DELETE');
     component.setShown('showApiReads', true);
     component.setShown('showApiReads', false);
-    expect(component.filters.action).toBe('PAGE_VIEW');
-    expect(lastQuery().actions).toEqual(['PAGE_VIEW']);
+    expect(component.filters.action).toBe('DELETE');
+    expect(lastQuery().actions).toEqual(['DELETE']);
   });
 
-  it('should name a page view by its page, with the page path as its route', () => {
-    apiSpy.getAuditLogs.and.returnValue(of({
-      items: [entry(3, { action: 'PAGE_VIEW', event: 'page.viewed', method: null, path: '/products/5', details: { page: 'Product detail' } })],
-      total: 1,
-    }));
-    component.setShown('showPageViews', true);
-    fixture.detectChanges();
-
-    const row = fixture.nativeElement.querySelector('.activity-log__row');
-    expect(row.querySelector('.activity-log__badge--page_view').textContent).toContain('PAGE VIEW');
-    expect(row.textContent).toContain('Product detail');
-    expect(row.querySelector('.activity-log__route').textContent.trim()).toBe('/products/5');
+  it('should offer a link to the page views of the app', () => {
+    const tabs = fixture.nativeElement.querySelectorAll('.activity-log__tab');
+    expect(tabs.length).toBe(2);
+    expect(tabs[1].textContent).toContain('Page views');
   });
 
   it('should send a number as a user id and other text as a username, once typing pauses', fakeAsync(() => {
@@ -147,7 +133,6 @@ describe('ActivityLogComponent', () => {
 
   it('should clear every filter at once', () => {
     component.setFilter('result', 'failure');
-    component.setShown('showPageViews', true);
     component.setShown('showApiReads', true);
     expect(component.hasFilters).toBeTrue();
 

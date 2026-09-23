@@ -1,0 +1,73 @@
+name: Backend
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app/backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'app/backend/**'
+      - '.github/workflows/backend.yml'
+
+defaults:
+  run:
+    working-directory: app/backend
+
+jobs:
+  check:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: storefront_user
+          POSTGRES_PASSWORD: storefront_pass
+          POSTGRES_DB: storefront_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U storefront_user -d storefront_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: test
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: storefront_test
+      POSTGRES_TEST_DB: storefront_test
+      POSTGRES_USER: storefront_user
+      POSTGRES_PASSWORD: storefront_pass
+      DATABASE_SSL: 'off'
+      # Throwaway values: the suite needs a secret and a pepper of its own, never the real ones
+      TOKEN_SECRET: ci-token-secret-ci-token-secret-ci-token
+      PASSWORD_PEPPER: ci-password-pepper-ci-password-pepper-ci
+      SALT_ROUNDS: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test

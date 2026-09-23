@@ -1,512 +1,110 @@
-import supertest from 'supertest';
-import app from '../../app';
-import { Order } from '../../types/order.types';
-import { Product } from '../../types/product.types';
-import { createAdmin } from '../support/admin';
+import { createAdmin, createProduct, registerCustomer } from '../support/api';
 
-const request = supertest(app);
-let token: string;
-let userId: number;
-let productId: number;
-let orderId: number;
+async function placeOrder(
+  customer: Awaited<ReturnType<typeof registerCustomer>>,
+  productId: number,
+  quantity = 1,
+) {
+  const added = await customer.post('/cart', { productId, quantity }).expect(201);
+  const res = await customer.post('/cart/checkout', { cartItemIds: [added.body.data.id] }).expect(201);
+  return res.body.data.order as { id: number; total: string; createdAt: string; status: string };
+}
 
-describe('Order Endpoints', () => {
-  beforeAll(async () => {
-    const user = {
-      firstName: 'Order',
-      lastName: 'Tester',
-      username: 'ordertester_' + Date.now(),
-      password: 'testpass123',
-    };
-    const userResponse = await request.post('/api/v1/auth/register').send(user);
-    token = userResponse.body.data.accessToken;
-    userId = userResponse.body.data.user.id;
+describe('Order endpoints', () => {
+  it('lists only the orders of the customer asking', async () => {
+    const admin = await createAdmin('orderadmin');
+    const product = await createProduct(admin, { price: 8, stock: 10 });
+    const customer = await registerCustomer('ordercustomer');
+    const other = await registerCustomer('orderother');
 
-    const product: Product = {
-      name: 'Order Test Product',
-      price: 99.99,
-      category: 'Test',
-      image: 'https://example.com/test.jpg',
-      description: 'A test product for order endpoint testing',
-      stock: 20,
-      isActive: true,
-    };
-    const admin = await createAdmin(request, 'orderadmin');
-    const productResponse = await request
-      .post('/api/v1/products')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .send(product);
-    productId = productResponse.body.data.id;
+    await placeOrder(customer, product.id, 2);
+    await placeOrder(other, product.id, 1);
+
+    const res = await customer.get('/orders').expect(200);
+    expect(res.body.meta.total).toBe(1);
+    expect(res.body.data[0].total).toBe('16.00');
+    expect(res.body.data[0].status).toBe('complete');
   });
 
-  it('POST /orders should create an order with token', async () => {
-    const order: Order = {
-      userId,
-      status: 'active',
-    };
+  it('stamps the order with the time it was placed', async () => {
+    const admin = await createAdmin('timeadmin');
+    const product = await createProduct(admin, { stock: 5 });
+    const customer = await registerCustomer('timecustomer');
 
-    const response = await request
-      .post('/api/v1/orders')
-      .set('Authorization', `Bearer ${token}`)
-      .send(order)
+    const order = await placeOrder(customer, product.id);
+    const placedAt = new Date(order.createdAt).getTime();
+
+    expect(Math.abs(Date.now() - placedAt)).toBeLessThan(60_000);
+  });
+
+  it('answers 404 for an order that belongs to someone else', async () => {
+    const admin = await createAdmin('privateadmin');
+    const product = await createProduct(admin, { stock: 5 });
+    const owner = await registerCustomer('orderowner');
+    const stranger = await registerCustomer('orderstranger');
+
+    const order = await placeOrder(owner, product.id);
+
+    await stranger.get(`/orders/${order.id}`).expect(404);
+    await stranger.get(`/orders/${order.id}/products`).expect(404);
+  });
+
+  it('returns the lines of an order with the price paid', async () => {
+    const admin = await createAdmin('lineadmin');
+    const product = await createProduct(admin, { price: 12.5, stock: 5 });
+    const customer = await registerCustomer('linecustomer');
+
+    const order = await placeOrder(customer, product.id, 2);
+    const res = await customer.get(`/orders/${order.id}/products`).expect(200);
+
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].unitPrice).toBe('12.50');
+    expect(res.body.data[0].quantity).toBe(2);
+  });
+
+  it('filters by status', async () => {
+    const admin = await createAdmin('statusadmin');
+    const product = await createProduct(admin, { stock: 5 });
+    const customer = await registerCustomer('statuscustomer');
+    await placeOrder(customer, product.id);
+
+    expect((await customer.get('/orders?status=complete').expect(200)).body.meta.total).toBe(1);
+    expect((await customer.get('/orders?status=active').expect(200)).body.meta.total).toBe(0);
+
+    const bad = await customer.get('/orders?status=shipped').expect(400);
+    expect(bad.body.message).toBe('status must be one of: active, complete');
+  });
+
+  it('has no customer routes that write to an order', async () => {
+    const admin = await createAdmin('readonlyadmin');
+    const product = await createProduct(admin, { stock: 5 });
+    const customer = await registerCustomer('readonlycustomer');
+    const order = await placeOrder(customer, product.id);
+
+    await customer.post('/orders', { userId: customer.id, status: 'complete' }).expect(404);
+    await customer.patch(`/orders/${order.id}`, { status: 'active' }).expect(404);
+    await customer.put(`/orders/${order.id}`, { status: 'active' }).expect(404);
+    await customer.delete(`/orders/${order.id}`).expect(404);
+    await customer.post(`/orders/${order.id}/products`, { productId: product.id, quantity: 1 }).expect(404);
+  });
+
+  it('counts only completed orders towards the popular list', async () => {
+    const admin = await createAdmin('popularadmin');
+    const quiet = await createProduct(admin, { stock: 100 });
+    const loud = await createProduct(admin, { stock: 100 });
+    const customer = await registerCustomer('popularcustomer');
+
+    const active = await admin.post('/admin/orders', { userId: customer.id, status: 'active' }).expect(201);
+    await admin
+      .post(`/admin/orders/${active.body.data.id}/products`, { productId: quiet.id, quantity: 50 })
       .expect(201);
 
-    expect(response.body.data.userId).toBe(userId);
-    expect(response.body.data.status).toBe('active');
-    orderId = response.body.data.id;
-  });
-
-  it('POST /orders should default to the token user when userId is omitted', async () => {
-    const response = await request
-      .post('/api/v1/orders')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ status: 'active' })
-      .expect(201);
-
-    expect(response.body.data.userId).toBe(userId);
-  });
-
-  it('POST /orders should require token', async () => {
-    await request.post('/api/v1/orders').send({ userId }).expect(401);
-  });
-
-  it('GET /orders should require token', async () => {
-    await request.get('/api/v1/orders').expect(401);
-  });
-
-  it('GET /orders should return list of orders with token', async () => {
-    const response = await request
-      .get('/api/v1/orders')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-  });
-
-  it('GET /orders/:id should return an order with token', async () => {
-    const response = await request
-      .get(`/api/v1/orders/${orderId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(response.body.data.id).toBe(orderId);
-  });
-
-  it('GET /orders?userId= should return orders for user', async () => {
-    const response = await request
-      .get(`/api/v1/orders?userId=${userId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    response.body.data.forEach((order: Order) => {
-      expect(order.userId).toBe(userId);
-    });
-  });
-
-  it('GET /orders?status=active should return active orders', async () => {
-    const response = await request
-      .get('/api/v1/orders?status=active')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    response.body.data.forEach((order: Order) => {
-      expect(order.status).toBe('active');
-    });
-  });
-
-  it('GET /orders?status=active&userId= should return active orders for user', async () => {
-    const response = await request
-      .get(`/api/v1/orders?status=active&userId=${userId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    response.body.data.forEach((order: Order) => {
-      expect(order.status).toBe('active');
-      expect(order.userId).toBe(userId);
-    });
-  });
-
-  it('GET /orders/user/:userId/current should return current active orders for user', async () => {
-    const response = await request
-      .get(`/api/v1/orders/user/${userId}/current`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    response.body.data.forEach((order: Order) => {
-      expect(order.status).toBe('active');
-      expect(order.userId).toBe(userId);
-    });
-  });
-
-  it('GET /orders/user/:userId/current should require token', async () => {
-    await request.get(`/api/v1/orders/user/${userId}/current`).expect(401);
-  });
-
-  it('POST /orders/:id/products should add product to order', async () => {
-    const response = await request
-      .post(`/api/v1/orders/${orderId}/products`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        productId,
-        quantity: 3,
-      })
-      .expect(200);
-
-    expect(response.body.data.orderId).toBe(orderId);
-    expect(response.body.data.productId).toBe(productId);
-    expect(response.body.data.quantity).toBe(3);
-  });
-
-  it('GET /orders/:id/products should return products for an order', async () => {
-    const response = await request
-      .get(`/api/v1/orders/${orderId}/products`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    expect(response.body.data[0].orderId).toBe(orderId);
-    expect(response.body.data[0].productId).toBe(productId);
-    expect(response.body.data[0].quantity).toBe(3);
-  });
-
-  it('GET /orders/:id/products should require token', async () => {
-    await request.get(`/api/v1/orders/${orderId}/products`).expect(401);
-  });
-
-  it('PUT /orders/:id should update order status with token', async () => {
-    const response = await request
-      .put(`/api/v1/orders/${orderId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ status: 'complete' })
-      .expect(200);
-
-    expect(response.body.data.status).toBe('complete');
-    expect(response.body.data.id).toBe(orderId);
-  });
-
-  it('GET /orders?status=complete&userId= should return completed orders for user', async () => {
-    const response = await request
-      .get(`/api/v1/orders?status=complete&userId=${userId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    response.body.data.forEach((order: Order) => {
-      expect(order.status).toBe('complete');
-      expect(order.userId).toBe(userId);
-    });
-  });
-
-  it('GET /orders/user/:userId/completed should return completed orders for user', async () => {
-    const response = await request
-      .get(`/api/v1/orders/user/${userId}/completed`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    response.body.data.forEach((order: Order) => {
-      expect(order.status).toBe('complete');
-      expect(order.userId).toBe(userId);
-    });
-  });
-
-  it('GET /orders/user/:userId/completed should require token', async () => {
-    await request.get(`/api/v1/orders/user/${userId}/completed`).expect(401);
-  });
-
-  it('PUT /orders/:id should require token', async () => {
-    await request.put(`/api/v1/orders/${orderId}`).send({ status: 'complete' }).expect(401);
-  });
-
-  it('DELETE /orders/:id should require token', async () => {
-    await request.delete(`/api/v1/orders/${orderId}`).expect(401);
-  });
-
-  it('DELETE /orders/:id should delete an order with token', async () => {
-    const createRes = await request
-      .post('/api/v1/orders')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ userId, status: 'active' });
-
-    const deleteOrderId = createRes.body.data.id;
-
-    const response = await request
-      .delete(`/api/v1/orders/${deleteOrderId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(response.body.data.id).toBe(deleteOrderId);
-  });
-
-  describe('Ownership', () => {
-    let otherToken: string;
-    let otherUserId: number;
-    let otherOrderId: number;
-
-    beforeAll(async () => {
-      const res = await request.post('/api/v1/auth/register').send({
-        firstName: 'Other',
-        lastName: 'Customer',
-        username: 'otherordertester_' + Date.now(),
-        password: 'testpass123',
-      });
-      otherToken = res.body.data.accessToken;
-      otherUserId = res.body.data.user.id;
-
-      const orderRes = await request
-        .post('/api/v1/orders')
-        .set('Authorization', `Bearer ${otherToken}`)
-        .send({ status: 'active' });
-      otherOrderId = orderRes.body.data.id;
-    });
-
-    it('GET /orders should only return orders of the token user', async () => {
-      const response = await request
-        .get('/api/v1/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-
-      expect(response.body.data.map((order: Order) => order.id)).not.toContain(otherOrderId);
-      response.body.data.forEach((order: Order) => {
-        expect(order.userId).toBe(userId);
-      });
-    });
-
-    it('GET /orders?userId= should return 403 for another user', async () => {
-      const response = await request
-        .get(`/api/v1/orders?userId=${otherUserId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
-      expect(response.body.message).toBe('You can only access your own data');
-    });
-
-    it('GET /orders/user/:userId/current should return 403 for another user', async () => {
-      await request
-        .get(`/api/v1/orders/user/${otherUserId}/current`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
-    });
-
-    it('GET /orders/user/:userId/completed should return 403 for another user', async () => {
-      await request
-        .get(`/api/v1/orders/user/${otherUserId}/completed`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
-    });
-
-    it('POST /orders should return 403 when userId belongs to another user', async () => {
-      await request
-        .post('/api/v1/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ userId: otherUserId, status: 'active' })
-        .expect(403);
-    });
-
-    it("GET /orders/:id should return 404 for another user's order", async () => {
-      const response = await request
-        .get(`/api/v1/orders/${otherOrderId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-      expect(response.body.message).toBe(`order with id ${otherOrderId} not found`);
-    });
-
-    it("GET /orders/:id/products should return 404 for another user's order", async () => {
-      await request
-        .get(`/api/v1/orders/${otherOrderId}/products`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-    });
-
-    it("POST /orders/:id/products should return 404 for another user's order", async () => {
-      await request
-        .post(`/api/v1/orders/${otherOrderId}/products`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ productId, quantity: 1 })
-        .expect(404);
-    });
-
-    it("PUT /orders/:id should return 404 for another user's order and leave it unchanged", async () => {
-      await request
-        .put(`/api/v1/orders/${otherOrderId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ status: 'complete' })
-        .expect(404);
-
-      const response = await request
-        .get(`/api/v1/orders/${otherOrderId}`)
-        .set('Authorization', `Bearer ${otherToken}`)
-        .expect(200);
-      expect(response.body.data.status).toBe('active');
-    });
-
-    it("DELETE /orders/:id should return 404 for another user's order and keep it", async () => {
-      await request
-        .delete(`/api/v1/orders/${otherOrderId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-
-      await request
-        .get(`/api/v1/orders/${otherOrderId}`)
-        .set('Authorization', `Bearer ${otherToken}`)
-        .expect(200);
-    });
-  });
-
-  describe('Input Validation', () => {
-    it('GET /orders should return 400 for invalid status filter', async () => {
-      const response = await request
-        .get('/api/v1/orders?status=invalid')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe("status filter must be either 'active' or 'complete'");
-    });
-
-    it('GET /orders should return 400 for invalid userId filter', async () => {
-      const response = await request
-        .get('/api/v1/orders?userId=abc')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('userId filter must be a valid positive integer');
-    });
-
-    it('GET /orders/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .get('/api/v1/orders/abc')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('order id must be a valid positive integer');
-    });
-
-    it('GET /orders/:id should return 404 for nonexistent id', async () => {
-      const response = await request
-        .get('/api/v1/orders/99999')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-      expect(response.body.message).toBe('order with id 99999 not found');
-    });
-
-    it('POST /orders should return 400 when userId is invalid', async () => {
-      const response = await request
-        .post('/api/v1/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ userId: 'abc', status: 'active' })
-        .expect(400);
-      expect(response.body.message).toBe('userId is required and must be a valid number');
-    });
-
-    it('POST /orders should return 400 when status is invalid', async () => {
-      const response = await request
-        .post('/api/v1/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ userId, status: 'invalid' })
-        .expect(400);
-      expect(response.body.message).toBe("status must be either 'active' or 'complete'");
-    });
-
-    it('PUT /orders/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .put('/api/v1/orders/abc')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ status: 'complete' })
-        .expect(400);
-      expect(response.body.message).toBe('order id must be a valid positive integer');
-    });
-
-    it('PUT /orders/:id should return 400 when status is missing', async () => {
-      const response = await request
-        .put(`/api/v1/orders/${orderId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({})
-        .expect(400);
-      expect(response.body.message).toBe('status is required');
-    });
-
-    it('PUT /orders/:id should return 400 when status is invalid', async () => {
-      const response = await request
-        .put(`/api/v1/orders/${orderId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ status: 'invalid' })
-        .expect(400);
-      expect(response.body.message).toBe("status must be either 'active' or 'complete'");
-    });
-
-    it('DELETE /orders/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .delete('/api/v1/orders/abc')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('order id must be a valid positive integer');
-    });
-
-    it('GET /orders/:id/products should return 400 for invalid id', async () => {
-      const response = await request
-        .get('/api/v1/orders/abc/products')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('order id must be a valid positive integer');
-    });
-
-    it('POST /orders/:id/products should return 400 when productId is missing', async () => {
-      const response = await request
-        .post(`/api/v1/orders/${orderId}/products`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ quantity: 1 })
-        .expect(400);
-      expect(response.body.message).toBe('productId is required and must be a valid number');
-    });
-
-    it('POST /orders/:id/products should return 400 when quantity is missing', async () => {
-      const response = await request
-        .post(`/api/v1/orders/${orderId}/products`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ productId })
-        .expect(400);
-      expect(response.body.message).toBe('quantity is required and must be a valid number');
-    });
-
-    it('GET /orders/user/:userId/current should return 400 for invalid userId', async () => {
-      const response = await request
-        .get('/api/v1/orders/user/abc/current')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('userId must be a valid positive integer');
-    });
-
-    it('GET /orders/user/:userId/completed should return 400 for invalid userId', async () => {
-      const response = await request
-        .get('/api/v1/orders/user/abc/completed')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('userId must be a valid positive integer');
-    });
-  });
-
-  describe('References and pagination', () => {
-    it('POST /orders/:id/products should return 400 for a product that does not exist', async () => {
-      const response = await request
-        .post(`/api/v1/orders/${orderId}/products`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ productId: 999999, quantity: 1 })
-        .expect(400);
-      expect(response.body.message).toBe('Product does not exist');
-    });
-
-    it('GET /orders should return one page and the total', async () => {
-      const response = await request
-        .get('/api/v1/orders?limit=1')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.data.length).toBe(1);
-      expect(response.body.meta.limit).toBe(1);
-      expect(response.body.meta.total).toBeGreaterThanOrEqual(1);
-    });
+    await placeOrder(customer, loud.id, 3);
+
+    const popular = await customer.get('/products/popular').expect(200);
+    const ids = popular.body.data.map((product: { id: number }) => product.id);
+    expect(ids.indexOf(loud.id)).toBeLessThan(
+      ids.indexOf(quiet.id) === -1 ? ids.length : ids.indexOf(quiet.id),
+    );
   });
 });

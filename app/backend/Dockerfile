@@ -1,15 +1,28 @@
-FROM node:22-alpine
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
+RUN npm ci
 
-RUN npm pkg delete scripts.postinstall && npm install
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
 
-COPY . .
+FROM node:22-alpine
 
-RUN npm run build
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json database.json openapi.yaml ./
+COPY migrations ./migrations
+
+# Runs as an unprivileged user, and node is the process that receives the stop signal
+USER node
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "dist/server.js"]

@@ -1,17 +1,35 @@
+import { Request } from 'express';
 import { UserRole } from './user.types';
 
 export const AUDIT_ACTIONS = [
-  'CREATE', 'READ', 'UPDATE', 'DELETE', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'REGISTER', 'SECURITY', 'PAGE_VIEW',
+  'CREATE',
+  'READ',
+  'UPDATE',
+  'DELETE',
+  'LOGIN',
+  'LOGIN_FAILED',
+  'LOGOUT',
+  'REGISTER',
+  'SECURITY',
 ] as const;
 
-export type AuditAction = typeof AUDIT_ACTIONS[number];
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export const AUDIT_RESULTS = ['success', 'failure'] as const;
 
-export type AuditResult = typeof AUDIT_RESULTS[number];
+export type AuditResult = (typeof AUDIT_RESULTS)[number];
 
 // Small, non-secret facts about one event, e.g. { productId: 5, quantity: 2 } or { changed: ['password'] }
 export type AuditDetails = Record<string, string | number | boolean | string[]>;
+
+export type AuditDetailsFn = (req: Request) => AuditDetails | undefined;
+
+export interface AuditRule {
+  method: string;
+  pattern: RegExp;
+  event: string | null;
+  details?: AuditDetailsFn;
+}
 
 export interface AuditSource {
   method?: string | null;
@@ -30,12 +48,10 @@ export interface NewAuditLog extends AuditSource {
   details?: AuditDetails | null;
 }
 
-export type AuditAnnotation = Pick<NewAuditLog, 'action' | 'event' | 'userId' | 'username' | 'userRole' | 'details' | 'method' | 'path'>;
-
-export interface PageView {
-  path: string;
-  page?: string;
-}
+export type AuditAnnotation = Pick<
+  NewAuditLog,
+  'action' | 'event' | 'userId' | 'username' | 'userRole' | 'details'
+>;
 
 export interface AuditLog {
   id: number;

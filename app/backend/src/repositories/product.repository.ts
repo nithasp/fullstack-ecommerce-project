@@ -1,155 +1,196 @@
-import pool, { Queryable, withTransaction } from '../database';
-import { Product, ProductFilters } from '../types/product.types';
+import { PoolClient } from 'pg';
+import pool from '../database';
+import { Queryable } from '../types/database.types';
 import { Pagination } from '../types/pagination.types';
+import { Product, ProductFilters, ProductType, Review } from '../types/product.types';
+import { NewProductInput, ProductUpdateInput } from '../schemas/product.schema';
 
-const INSERT_PRODUCT = `INSERT INTO products (name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`;
+const COLUMNS =
+  'name, price, category, image, description, preview_img, types, reviews, overall_rating, stock, is_active, shop_id, shop_name';
+
+const valuesOf = (product: NewProductInput): unknown[] => [
+  product.name,
+  product.price,
+  product.category ?? null,
+  product.image ?? null,
+  product.description ?? null,
+  JSON.stringify(product.previewImg),
+  JSON.stringify(product.types),
+  JSON.stringify(product.reviews),
+  product.overallRating,
+  product.stock,
+  product.isActive,
+  product.shopId ?? null,
+  product.shopName ?? null,
+];
 
 export class ProductRepository {
-  async index(filters: ProductFilters = {}, page?: Pagination): Promise<Product[]> {
-    const params: (string | number)[] = [];
-    let sql = `SELECT * FROM products${this.where(filters, params)} ORDER BY id ASC`;
-    if (page) {
-      params.push(page.limit);  sql += ` LIMIT $${params.length}`;
-      params.push(page.offset); sql += ` OFFSET $${params.length}`;
-    }
+  async index(filters: ProductFilters, page: Pagination): Promise<Product[]> {
+    const params: unknown[] = [];
+    const sql = `SELECT * FROM products${where(filters, params)} ORDER BY id ASC
+                 LIMIT $${params.push(page.limit)} OFFSET $${params.push(page.offset)}`;
     const { rows } = await pool.query(sql, params);
-    return rows.map((row) => this.mapRow(row));
+    return rows.map(toProduct);
   }
 
-  async count(filters: ProductFilters = {}): Promise<number> {
-    const params: (string | number)[] = [];
-    const { rows } = await pool.query(`SELECT COUNT(*) FROM products${this.where(filters, params)}`, params);
-    return parseInt(rows[0].count, 10);
+  async count(filters: ProductFilters): Promise<number> {
+    const params: unknown[] = [];
+    const { rows } = await pool.query(`SELECT COUNT(*) FROM products${where(filters, params)}`, params);
+    return Number(rows[0].count);
   }
 
   async categories(): Promise<string[]> {
     const { rows } = await pool.query(
-      `SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category <> '' ORDER BY category ASC`
+      `SELECT DISTINCT category FROM products
+       WHERE is_active AND category IS NOT NULL AND category <> '' ORDER BY category ASC`,
     );
     return rows.map((row) => row.category as string);
   }
 
-  async show(id: number): Promise<Product | null> {
-    const { rows } = await pool.query('SELECT * FROM products WHERE id=$1', [id]);
-    return rows[0] ? this.mapRow(rows[0]) : null;
-  }
-
-  async create(product: Product, db: Queryable = pool): Promise<Product> {
-    const { rows } = await db.query(INSERT_PRODUCT, [
-      product.name,
-      product.price,
-      product.category || null,
-      product.image || null,
-      product.description || null,
-      JSON.stringify(product.previewImg || []),
-      JSON.stringify(product.types || []),
-      JSON.stringify(product.reviews || []),
-      product.overallRating || 0,
-      product.stock || 0,
-      product.isActive !== undefined ? product.isActive : true,
-      product.shopId || null,
-      product.shopName || null,
-    ]);
-    return this.mapRow(rows[0]);
-  }
-
-  async update(id: number, product: Partial<Product>): Promise<Product | null> {
-    const fields: string[] = [];
-    const values: (string | number | boolean)[] = [];
-    let i = 1;
-
-    if (product.name)                  { fields.push(`name=$${i++}`);           values.push(product.name); }
-    if (product.price !== undefined)   { fields.push(`price=$${i++}`);          values.push(product.price); }
-    if (product.category !== undefined){ fields.push(`category=$${i++}`);       values.push(product.category as string); }
-    if (product.image !== undefined)   { fields.push(`image=$${i++}`);          values.push(product.image as string); }
-    if (product.description !== undefined){ fields.push(`description=$${i++}`); values.push(product.description as string); }
-    if (product.previewImg !== undefined) { fields.push(`preview_img=$${i++}`); values.push(JSON.stringify(product.previewImg)); }
-    if (product.types !== undefined)   { fields.push(`types=$${i++}`);          values.push(JSON.stringify(product.types)); }
-    if (product.reviews !== undefined) { fields.push(`reviews=$${i++}`);        values.push(JSON.stringify(product.reviews)); }
-    if (product.overallRating !== undefined){ fields.push(`overall_rating=$${i++}`); values.push(product.overallRating); }
-    if (product.stock !== undefined)   { fields.push(`stock=$${i++}`);          values.push(product.stock); }
-    if (product.isActive !== undefined){ fields.push(`is_active=$${i++}`);      values.push(product.isActive); }
-    if (product.shopId !== undefined)  { fields.push(`shop_id=$${i++}`);        values.push(product.shopId as string); }
-    if (product.shopName !== undefined){ fields.push(`shop_name=$${i++}`);      values.push(product.shopName as string); }
-
-    if (!fields.length) return this.show(id);
-
-    values.push(id);
+  async show(id: number, includeInactive = false): Promise<Product | null> {
     const { rows } = await pool.query(
-      `UPDATE products SET ${fields.join(', ')} WHERE id=$${i} RETURNING *`,
-      values
+      `SELECT * FROM products WHERE id = $1${includeInactive ? '' : ' AND is_active'}`,
+      [id],
     );
-    return rows[0] ? this.mapRow(rows[0]) : null;
+    return rows[0] ? toProduct(rows[0]) : null;
   }
 
-  async delete(id: number): Promise<Product | null> {
-    const { rows } = await pool.query('DELETE FROM products WHERE id=$1 RETURNING *', [id]);
-    return rows[0] ? this.mapRow(rows[0]) : null;
+  async lockByIds(ids: number[], tx: PoolClient): Promise<Product[]> {
+    const { rows } = await tx.query(
+      'SELECT * FROM products WHERE id = ANY($1::int[]) ORDER BY id ASC FOR UPDATE',
+      [ids],
+    );
+    return rows.map(toProduct);
   }
 
-  async bulkCreate(products: Product[]): Promise<Product[]> {
-    return withTransaction(async (tx) => {
-      const created: Product[] = [];
-      for (const product of products) created.push(await this.create(product, tx));
-      return created;
+  async create(product: NewProductInput, db: Queryable = pool): Promise<Product> {
+    const { rows } = await db.query(
+      `INSERT INTO products (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      valuesOf(product),
+    );
+    return toProduct(rows[0]);
+  }
+
+  async createMany(products: NewProductInput[], db: Queryable = pool): Promise<Product[]> {
+    const params: unknown[] = [];
+    const tuples = products.map((product) => {
+      const placeholders = valuesOf(product).map((value) => `$${params.push(value)}`);
+      return `(${placeholders.join(', ')})`;
     });
-  }
-
-  async mostPopular(limit: number = 5): Promise<Product[]> {
-    const { rows } = await pool.query(
-      `SELECT p.*, COALESCE(SUM(op.quantity), 0) AS total_quantity
-       FROM products p LEFT JOIN order_products op ON p.id = op.product_id
-       GROUP BY p.id ORDER BY total_quantity DESC LIMIT $1`,
-      [limit]
+    const { rows } = await db.query(
+      `INSERT INTO products (${COLUMNS}) VALUES ${tuples.join(', ')} RETURNING *`,
+      params,
     );
-    return rows.map((row) => this.mapRow(row));
+    return rows.map(toProduct);
   }
 
-  private where(filters: ProductFilters, params: (string | number)[]): string {
-    const conditions: string[] = [];
-    if (filters.category) {
-      params.push(filters.category);
-      conditions.push(`LOWER(category) = LOWER($${params.length})`);
-    }
-    if (filters.search) {
-      params.push(filters.search.toLowerCase());
-      conditions.push(
-        `(STRPOS(LOWER(name), $${params.length}) > 0 OR STRPOS(LOWER(COALESCE(description, '')), $${params.length}) > 0)`
-      );
-    }
-    return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+  async update(id: number, changes: ProductUpdateInput): Promise<Product | null> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const set = (column: string, value: unknown) => fields.push(`${column} = $${values.push(value)}`);
+
+    if (changes.name !== undefined) set('name', changes.name);
+    if (changes.price !== undefined) set('price', changes.price);
+    if (changes.category !== undefined) set('category', changes.category);
+    if (changes.image !== undefined) set('image', changes.image);
+    if (changes.description !== undefined) set('description', changes.description);
+    if (changes.previewImg !== undefined) set('preview_img', JSON.stringify(changes.previewImg));
+    if (changes.types !== undefined) set('types', JSON.stringify(changes.types));
+    if (changes.reviews !== undefined) set('reviews', JSON.stringify(changes.reviews));
+    if (changes.overallRating !== undefined) set('overall_rating', changes.overallRating);
+    if (changes.stock !== undefined) set('stock', changes.stock);
+    if (changes.isActive !== undefined) set('is_active', changes.isActive);
+    if (changes.shopId !== undefined) set('shop_id', changes.shopId);
+    if (changes.shopName !== undefined) set('shop_name', changes.shopName);
+
+    if (!fields.length) return this.show(id, true);
+
+    const { rows } = await pool.query(
+      `UPDATE products SET ${fields.join(', ')} WHERE id = $${values.push(id)} RETURNING *`,
+      values,
+    );
+    return rows[0] ? toProduct(rows[0]) : null;
   }
 
-  private normalizeType(t: Record<string, unknown>) {
-    return {
-      _id: t._id as string | undefined,
-      productId: (t.productId ?? t.product_id) as number,
-      color: t.color as string,
-      quantity: t.quantity as number,
-      price: t.price as number,
-      stock: t.stock as number,
-      image: t.image as string,
-    };
+  async archive(id: number): Promise<Product | null> {
+    const { rows } = await pool.query('UPDATE products SET is_active = false WHERE id = $1 RETURNING *', [
+      id,
+    ]);
+    return rows[0] ? toProduct(rows[0]) : null;
   }
 
-  private mapRow(row: Record<string, unknown>): Product {
-    const rawTypes = row.types as Record<string, unknown>[] | undefined;
-    return {
-      id: row.id as number,
-      name: row.name as string,
-      price: row.price as number,
-      category: row.category as string | undefined,
-      image: row.image as string | undefined,
-      description: row.description as string | undefined,
-      previewImg: row.preview_img as string[] | undefined,
-      types: rawTypes ? rawTypes.map((t) => this.normalizeType(t)) : undefined,
-      reviews: row.reviews as Product['reviews'],
-      overallRating: row.overall_rating ? parseFloat(row.overall_rating as string) : undefined,
-      stock: row.stock as number | undefined,
-      isActive: row.is_active as boolean | undefined,
-      shopId: row.shop_id as string | undefined,
-      shopName: row.shop_name as string | undefined,
-    };
+  async updateStock(id: number, stock: number, types: ProductType[], db: Queryable = pool): Promise<void> {
+    await db.query('UPDATE products SET stock = $2, types = $3::jsonb WHERE id = $1', [
+      id,
+      stock,
+      JSON.stringify(types),
+    ]);
   }
+
+  async mostPopular(limit = 5): Promise<Product[]> {
+    const { rows } = await pool.query(
+      `SELECT p.*, COALESCE(SUM(op.quantity) FILTER (WHERE o.status = 'complete'), 0) AS total_quantity
+       FROM products p
+       LEFT JOIN order_products op ON op.product_id = p.id
+       LEFT JOIN orders o ON o.id = op.order_id
+       WHERE p.is_active
+       GROUP BY p.id
+       ORDER BY total_quantity DESC, p.id ASC
+       LIMIT $1`,
+      [limit],
+    );
+    return rows.map(toProduct);
+  }
+}
+
+function where(filters: ProductFilters, params: unknown[]): string {
+  const conditions: string[] = [];
+  if (!filters.includeInactive) conditions.push('is_active');
+  if (filters.category) conditions.push(`LOWER(category) = LOWER($${params.push(filters.category)})`);
+  if (filters.search) {
+    const index = params.push(filters.search.toLowerCase());
+    conditions.push(
+      `(STRPOS(LOWER(name), $${index}) > 0 OR STRPOS(LOWER(COALESCE(description, '')), $${index}) > 0)`,
+    );
+  }
+  return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+}
+
+function toProductType(value: Record<string, unknown>): ProductType {
+  return {
+    _id: value._id as string | undefined,
+    productId: (value.productId ?? value.product_id) as number | undefined,
+    color: value.color as string,
+    quantity: value.quantity as number | undefined,
+    price: Number(value.price),
+    stock: Number(value.stock ?? 0),
+    image: value.image as string | undefined,
+  };
+}
+
+function toArray<T>(value: unknown, map: (item: Record<string, unknown>) => T): T[] {
+  return Array.isArray(value) ? value.map((item) => map(item as Record<string, unknown>)) : [];
+}
+
+export function toProductTypes(value: unknown): ProductType[] {
+  return toArray(value, toProductType);
+}
+
+export function toProduct(row: Record<string, unknown>): Product {
+  return {
+    id: row.id as number,
+    name: row.name as string,
+    price: row.price as string,
+    category: (row.category as string | null) ?? null,
+    image: (row.image as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    previewImg: Array.isArray(row.preview_img) ? (row.preview_img as string[]) : [],
+    types: toProductTypes(row.types),
+    reviews: Array.isArray(row.reviews) ? (row.reviews as Review[]) : [],
+    overallRating: Number(row.overall_rating ?? 0),
+    stock: Number(row.stock ?? 0),
+    isActive: Boolean(row.is_active),
+    shopId: (row.shop_id as string | null) ?? null,
+    shopName: (row.shop_name as string | null) ?? null,
+  };
 }

@@ -1,29 +1,30 @@
 import { RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config';
+import { sendError } from '../utils/response';
 
 const WINDOW_MS = 15 * 60 * 1000;
 
-const isTest = process.env.ENV === 'test';
 const passThrough: RequestHandler = (_req, _res, next) => next();
 
-// Login/register/refresh get a tight limit against credential stuffing (OWASP API2)
-export const authLimiter: RequestHandler = isTest
-  ? passThrough
-  : rateLimit({
-      windowMs: WINDOW_MS,
-      max: 20,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: { error: 'Too many requests. Please wait a moment and try again.', code: 'rate_limited' },
-    });
+const limiter = (limit: number, message: string): RequestHandler =>
+  config.isTest
+    ? passThrough
+    : rateLimit({
+        windowMs: WINDOW_MS,
+        limit,
+        standardHeaders: true,
+        legacyHeaders: false,
+        handler: (_req, res) => sendError(res, 429, message, 'rate_limited'),
+      });
 
-export const apiLimiter: RequestHandler = isTest
-  ? passThrough
-  : rateLimit({
-      windowMs: WINDOW_MS,
-      max: config.apiRateLimit,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: { status: 429, message: 'Too many requests. Please wait a moment and try again.', data: null },
-    });
+// Login, register and refresh get a tight limit against credential stuffing (OWASP API2)
+export const authLimiter = limiter(
+  config.authRateLimit,
+  'Too many attempts. Please wait a moment and try again.',
+);
+
+export const apiLimiter = limiter(
+  config.apiRateLimit,
+  'Too many requests. Please wait a moment and try again.',
+);

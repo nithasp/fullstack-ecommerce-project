@@ -1,12 +1,12 @@
 import { UserRole } from '../../../core/models/auth.model';
 
-// READ is a GET request the API answered; PAGE_VIEW is a page of this app that someone opened
+// Security-relevant events only. Pages people opened are analytics and live in their own list.
 export type AuditAction =
-  'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGIN_FAILED' | 'LOGOUT' | 'REGISTER' | 'SECURITY' | 'PAGE_VIEW';
+  'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGIN_FAILED' | 'LOGOUT' | 'REGISTER' | 'SECURITY';
 
 // Every type the backend records, in the order the type filter lists them
 export const AUDIT_ACTIONS: AuditAction[] = [
-  'CREATE', 'READ', 'UPDATE', 'DELETE', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'REGISTER', 'SECURITY', 'PAGE_VIEW',
+  'CREATE', 'READ', 'UPDATE', 'DELETE', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'REGISTER', 'SECURITY',
 ];
 
 // success: any status below 400; failure: 400 and above

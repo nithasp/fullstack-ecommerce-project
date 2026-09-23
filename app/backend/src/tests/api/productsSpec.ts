@@ -1,438 +1,178 @@
-import supertest from 'supertest';
-import app from '../../app';
-import { Product } from '../../types/product.types';
-import { createAdmin } from '../support/admin';
+import { createAdmin, createProduct, registerCustomer, uniqueName } from '../support/api';
 
-const request = supertest(app);
-let token: string;
-let adminToken: string;
+describe('Product endpoints', () => {
+  describe('catalog', () => {
+    it('returns a page of products with the total', async () => {
+      const admin = await createAdmin('catalogadmin');
+      await createProduct(admin);
+      const customer = await registerCustomer('shopper');
 
-describe('Product Endpoints', () => {
-  beforeAll(async () => {
-    const user = {
-      firstName: 'Product',
-      lastName: 'Tester',
-      username: 'producttester_' + Date.now(),
-      password: 'testpass123',
-    };
-    const response = await request.post('/api/v1/auth/register').send(user);
-    token = response.body.data.accessToken;
-    adminToken = (await createAdmin(request, 'productadmin')).token;
-  });
-
-  const testProduct: Product = {
-    name: 'Test API Product',
-    price: 49.99,
-    category: 'Books',
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500',
-    description: 'A test product for API testing.',
-    previewImg: ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500'],
-    types: [
-      {
-        productId: 9001,
-        color: 'Red',
-        quantity: 10,
-        price: 49.99,
-        stock: 10,
-        image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500',
-      },
-    ],
-    reviews: [],
-    overallRating: 0,
-    stock: 10,
-    isActive: true,
-  };
-
-  it('GET /products should return list of products', async () => {
-    const response = await request
-      .get('/api/v1/products')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-    expect(Array.isArray(response.body.data)).toBe(true);
-  });
-
-  it('GET /products should require token', async () => {
-    await request.get('/api/v1/products').expect(401);
-  });
-
-  it('POST /products should create a product with an admin token', async () => {
-    const response = await request
-      .post('/api/v1/products')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send(testProduct)
-      .expect(201);
-
-    expect(response.body.data.name).toBe(testProduct.name);
-    expect(parseFloat(response.body.data.price)).toBe(testProduct.price);
-    expect(response.body.data.category).toBe(testProduct.category);
-    expect(response.body.data.image).toBe(testProduct.image);
-    expect(response.body.data.description).toBe(testProduct.description);
-    expect(response.body.data.previewImg).toEqual(testProduct.previewImg);
-    expect(response.body.data.types).toEqual(testProduct.types);
-    expect(response.body.data.stock).toBe(testProduct.stock);
-    expect(response.body.data.isActive).toBe(testProduct.isActive);
-  });
-
-  it('POST /products should require token', async () => {
-    await request.post('/api/v1/products').send(testProduct).expect(401);
-  });
-
-  describe('Admin-only writes', () => {
-    it('POST /products should return 403 for a customer', async () => {
-      const response = await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${token}`)
-        .send(testProduct)
-        .expect(403);
-      expect(response.body.message).toBe('Admin access required');
+      const res = await customer.get('/products?limit=5').expect(200);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.meta.limit).toBe(5);
+      expect(res.body.meta.total).toBeGreaterThan(0);
     });
 
-    it('POST /products/bulk should return 403 for a customer', async () => {
-      await request
-        .post('/api/v1/products/bulk')
-        .set('Authorization', `Bearer ${token}`)
-        .send([testProduct])
-        .expect(403);
+    it('returns the price as a string, so no decimal is lost on the way', async () => {
+      const admin = await createAdmin('priceadmin');
+      const product = await createProduct(admin, { price: 12.34 });
+      const customer = await registerCustomer('pricecustomer');
+
+      const res = await customer.get(`/products/${product.id}`).expect(200);
+      expect(res.body.data.price).toBe('12.34');
     });
 
-    it('PUT /products/:id should return 403 for a customer and leave the product unchanged', async () => {
-      const list = await request.get('/api/v1/products').set('Authorization', `Bearer ${token}`);
-      const product = list.body.data[0];
+    it('hides archived products from customers but keeps them for admins', async () => {
+      const admin = await createAdmin('archiveadmin');
+      const product = await createProduct(admin, { category: uniqueName('Archived') });
+      const customer = await registerCustomer('archivecustomer');
 
-      await request
-        .put(`/api/v1/products/${product.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Tampered' })
-        .expect(403);
+      await customer.get(`/products/${product.id}`).expect(200);
 
-      const after = await request.get(`/api/v1/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(200);
-      expect(after.body.data.name).toBe(product.name);
+      const archived = await admin.delete(`/admin/products/${product.id}`).expect(200);
+      expect(archived.body.data.isActive).toBe(false);
+
+      await customer.get(`/products/${product.id}`).expect(404);
+
+      const catalog = await customer.get(`/products?category=${product.category}`).expect(200);
+      expect(catalog.body.data.length).toBe(0);
+
+      const adminList = await admin.get(`/admin/products?category=${product.category}`).expect(200);
+      expect(adminList.body.data.length).toBe(1);
     });
 
-    it('DELETE /products/:id should return 403 for a customer and keep the product', async () => {
-      const list = await request.get('/api/v1/products').set('Authorization', `Bearer ${token}`);
-      const product = list.body.data[0];
+    it('filters by category and search term', async () => {
+      const admin = await createAdmin('filteradmin');
+      const category = uniqueName('Cat');
+      const name = uniqueName('Telescope');
+      await createProduct(admin, { name, category });
+      const customer = await registerCustomer('filtercustomer');
 
-      await request
-        .delete(`/api/v1/products/${product.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
+      const byCategory = await customer.get(`/products?category=${category}`).expect(200);
+      expect(byCategory.body.data.length).toBe(1);
 
-      await request.get(`/api/v1/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(200);
+      const bySearch = await customer.get(`/products?search=${name.toLowerCase()}`).expect(200);
+      expect(bySearch.body.data[0].name).toBe(name);
+    });
+
+    it('lists only the categories of active products', async () => {
+      const admin = await createAdmin('catadmin');
+      const category = uniqueName('OnlyCat');
+      const product = await createProduct(admin, { category });
+      const customer = await registerCustomer('catcustomer');
+
+      expect((await customer.get('/products/categories').expect(200)).body.data).toContain(category);
+
+      await admin.delete(`/admin/products/${product.id}`).expect(200);
+      expect((await customer.get('/products/categories').expect(200)).body.data).not.toContain(category);
+    });
+
+    it('needs a token', async () => {
+      const customer = await registerCustomer('tokenless');
+      await customer.agent.get('/api/v1/products').expect(401);
     });
   });
 
-  it('GET /products/:id should return a product', async () => {
-    const productsResponse = await request
-      .get('/api/v1/products')
-      .set('Authorization', `Bearer ${token}`);
-    const productId = productsResponse.body.data[0].id;
-
-    const response = await request
-      .get(`/api/v1/products/${productId}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-    expect(response.body.data.id).toBe(productId);
-  });
-
-  it('GET /products/:id should require token', async () => {
-    await request.get('/api/v1/products/1').expect(401);
-  });
-
-  it('GET /products?category= should return products filtered by category', async () => {
-    const response = await request
-      .get(`/api/v1/products?category=${testProduct.category}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    expect(response.body.data[0].category).toBe(testProduct.category);
-  });
-
-  it('GET /products?category= should be case-insensitive', async () => {
-    const response = await request
-      .get(`/api/v1/products?category=${(testProduct.category as string).toUpperCase()}`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeGreaterThan(0);
-    expect(response.body.data[0].category).toBe(testProduct.category);
-  });
-
-  it('GET /products/popular should return top 5 most popular products', async () => {
-    const response = await request
-      .get('/api/v1/products/popular')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.data.length).toBeLessThanOrEqual(5);
-  });
-
-  it('GET /products/popular should require token', async () => {
-    await request.get('/api/v1/products/popular').expect(401);
-  });
-
-  it('PUT /products/:id should update a product with an admin token', async () => {
-    const productsResponse = await request
-      .get('/api/v1/products')
-      .set('Authorization', `Bearer ${token}`);
-    const productId = productsResponse.body.data[0].id;
-
-    const response = await request
-      .put(`/api/v1/products/${productId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: 'Updated Product', price: 59.99, description: 'Updated description' })
-      .expect(200);
-
-    expect(response.body.data.name).toBe('Updated Product');
-    expect(parseFloat(response.body.data.price)).toBe(59.99);
-    expect(response.body.data.description).toBe('Updated description');
-  });
-
-  it('PUT /products/:id should require token', async () => {
-    await request.put('/api/v1/products/1').send({ name: 'Fail' }).expect(401);
-  });
-
-  it('DELETE /products/:id should require token', async () => {
-    await request.delete('/api/v1/products/1').expect(401);
-  });
-
-  it('DELETE /products/:id should delete a product with an admin token', async () => {
-    const createRes = await request
-      .post('/api/v1/products')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: 'To Delete', price: 1.0, category: 'Temp' });
-
-    const deleteProductId = createRes.body.data.id;
-
-    const response = await request
-      .delete(`/api/v1/products/${deleteProductId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    expect(response.body.data.id).toBe(deleteProductId);
-  });
-
-  describe('Input Validation', () => {
-    it('POST /products should return 400 when name is missing', async () => {
-      const response = await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ price: 9.99 })
-        .expect(400);
-      expect(response.body.message).toBe('name is required and must be a non-empty string');
+  describe('POST /admin/products', () => {
+    it('refuses a customer', async () => {
+      const customer = await registerCustomer('notadmin');
+      await customer.post('/admin/products', { name: 'Nope', price: 1 }).expect(403);
     });
 
-    it('POST /products should return 400 when price is missing', async () => {
-      const response = await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'No Price Product' })
-        .expect(400);
-      expect(response.body.message).toBe('price is required and must be a valid number');
-    });
-
-    it('POST /products should return 400 when price is negative', async () => {
-      const response = await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'Negative Price', price: -5 })
-        .expect(400);
-      expect(response.body.message).toBe('price must be a non-negative number');
-    });
-
-    it('GET /products/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .get('/api/v1/products/abc')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('product id must be a valid positive integer');
-    });
-
-    it('GET /products/:id should return 404 for nonexistent id', async () => {
-      const response = await request
-        .get('/api/v1/products/99999')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-      expect(response.body.message).toBe('product with id 99999 not found');
-    });
-
-    it('PUT /products/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .put('/api/v1/products/abc')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'Test' })
-        .expect(400);
-      expect(response.body.message).toBe('product id must be a valid positive integer');
-    });
-
-    it('PUT /products/:id should return 400 when no valid fields provided', async () => {
-      const response = await request
-        .put('/api/v1/products/1')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({})
-        .expect(400);
-      expect(response.body.message).toBe('at least one field is required to update');
-    });
-
-    it('PUT /products/:id should return 400 when name is empty string', async () => {
-      const response = await request
-        .put('/api/v1/products/1')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: '   ' })
-        .expect(400);
-      expect(response.body.message).toBe('name must be a non-empty string');
-    });
-
-    it('PUT /products/:id should return 400 when price is invalid', async () => {
-      const response = await request
-        .put('/api/v1/products/1')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ price: 'abc' })
-        .expect(400);
-      expect(response.body.message).toBe('price must be a valid number');
-    });
-
-    it('PUT /products/:id should return 400 when price is negative', async () => {
-      const response = await request
-        .put('/api/v1/products/1')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ price: -10 })
-        .expect(400);
-      expect(response.body.message).toBe('price must be a non-negative number');
-    });
-
-    it('DELETE /products/:id should return 400 for invalid id', async () => {
-      const response = await request
-        .delete('/api/v1/products/abc')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(400);
-      expect(response.body.message).toBe('product id must be a valid positive integer');
-    });
-  });
-
-  describe('Pagination, search and categories', () => {
-    beforeAll(async () => {
-      await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'Searchable Lamp', price: 25, category: 'Lighting', description: 'A warm reading light' })
+    it('stores the product an admin sends', async () => {
+      const admin = await createAdmin('creator');
+      const res = await admin
+        .post('/admin/products', {
+          name: 'Field Notebook',
+          price: '4.50',
+          category: 'Stationery',
+          stock: 12,
+          types: [{ _id: 'red', color: 'Red', price: 4.5, stock: 12 }],
+        })
         .expect(201);
+
+      expect(res.body.data.price).toBe('4.50');
+      expect(res.body.data.types[0].color).toBe('Red');
+      expect(res.body.data.isActive).toBe(true);
     });
 
-    it('GET /products should return the first page with its position in the catalog', async () => {
-      const response = await request
-        .get('/api/v1/products')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.meta.limit).toBe(50);
-      expect(response.body.meta.offset).toBe(0);
-      expect(response.body.meta.total).toBeGreaterThanOrEqual(response.body.data.length);
+    it('rejects a price that is not an amount', async () => {
+      const admin = await createAdmin('badprice');
+      for (const price of ['', 'free', true, 19.999, -1]) {
+        const res = await admin.post('/admin/products', { name: 'Bad', price }).expect(400);
+        expect(res.body.message).toContain('price');
+      }
     });
 
-    it('GET /products should honour limit and offset', async () => {
-      const first = await request.get('/api/v1/products?limit=1&offset=0').set('Authorization', `Bearer ${token}`).expect(200);
-      const second = await request.get('/api/v1/products?limit=1&offset=1').set('Authorization', `Bearer ${token}`).expect(200);
-      expect(first.body.data.length).toBe(1);
-      expect(second.body.data.length).toBe(1);
-      expect(first.body.data[0].id).not.toBe(second.body.data[0].id);
-      expect(second.body.meta.total).toBe(first.body.meta.total);
+    it('rejects options that are not a list of options', async () => {
+      const admin = await createAdmin('badtypes');
+      for (const types of ['oops', {}, [null], [{ color: 'Red' }]]) {
+        await admin.post('/admin/products', { name: 'Bad', price: 1, types }).expect(400);
+      }
     });
 
-    it('GET /products should reject a page size over 100', async () => {
-      const response = await request
-        .get('/api/v1/products?limit=101')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(400);
-      expect(response.body.message).toBe('limit must be an integer between 1 and 100');
+    it('rejects a negative stock', async () => {
+      const admin = await createAdmin('badstock');
+      await admin.post('/admin/products', { name: 'Bad', price: 1, stock: -5 }).expect(400);
     });
 
-    it('GET /products?search= should match the name case-insensitively', async () => {
-      const response = await request
-        .get('/api/v1/products?search=searchable%20LAMP')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.data.map((p: Product) => p.name)).toContain('Searchable Lamp');
+    it('creates many products at once', async () => {
+      const admin = await createAdmin('bulk');
+      const res = await admin
+        .post('/admin/products/bulk', [
+          { name: uniqueName('Bulk'), price: 1.5 },
+          { name: uniqueName('Bulk'), price: 2.5 },
+        ])
+        .expect(201);
+
+      expect(res.body.data.length).toBe(2);
+      expect(res.body.message).toBe('2 products created.');
     });
 
-    it('GET /products?search= should match the description too', async () => {
-      const response = await request
-        .get('/api/v1/products?search=reading%20light')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.data.map((p: Product) => p.name)).toContain('Searchable Lamp');
-    });
-
-    it('GET /products should combine category and search, and count only the matches', async () => {
-      const response = await request
-        .get('/api/v1/products?category=lighting&search=lamp')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.data.length).toBeGreaterThan(0);
-      response.body.data.forEach((p: Product) => expect(p.category).toBe('Lighting'));
-      expect(response.body.meta.total).toBe(response.body.data.length);
-    });
-
-    it('GET /products/categories should list every category once', async () => {
-      const response = await request
-        .get('/api/v1/products/categories')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(response.body.data).toContain('Lighting');
-      expect(new Set(response.body.data).size).toBe(response.body.data.length);
-    });
-
-    it('GET /products/categories should require token', async () => {
-      await request.get('/api/v1/products/categories').expect(401);
-    });
-  });
-
-  describe('Values the database rejects', () => {
-    it('POST /products should return 400 when a value is too long for its column', async () => {
-      const response = await request
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'x'.repeat(300), price: 1 })
-        .expect(400);
-      expect(response.body.message).toBe('A value is too long');
-    });
-
-    it('PUT /products/:id should return 400 when stock is not a number', async () => {
-      const list = await request.get('/api/v1/products?limit=1').set('Authorization', `Bearer ${token}`).expect(200);
-      const response = await request
-        .put(`/api/v1/products/${list.body.data[0].id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ stock: 'lots' })
-        .expect(400);
-      expect(response.body.message).toBe('A value has an invalid format');
-    });
-
-    it('POST /products/bulk should save nothing when one product is rejected', async () => {
-      const before = await request.get('/api/v1/products?limit=1').set('Authorization', `Bearer ${token}`).expect(200);
-
-      const response = await request
-        .post('/api/v1/products/bulk')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send([
-          { name: 'Bulk Row That Fits', price: 1 },
-          { name: 'Bulk Row Out Of Range', price: 1, stock: 1e12 },
+    it('rejects a bulk import where one product is wrong, without saving any of them', async () => {
+      const admin = await createAdmin('bulkbad');
+      const name = uniqueName('BulkBad');
+      await admin
+        .post('/admin/products/bulk', [
+          { name, price: 1.5 },
+          { name: uniqueName('BulkBad'), price: 'free' },
         ])
         .expect(400);
-      expect(response.body.message).toBe('A number is out of range');
 
-      const after = await request.get('/api/v1/products?limit=1').set('Authorization', `Bearer ${token}`).expect(200);
-      expect(after.body.meta.total).toBe(before.body.meta.total);
+      const list = await admin.get(`/admin/products?search=${name}`).expect(200);
+      expect(list.body.data.length).toBe(0);
+    });
+  });
+
+  describe('PATCH /admin/products/:id', () => {
+    it('changes only the fields it is given', async () => {
+      const admin = await createAdmin('patcher');
+      const product = await createProduct(admin, { price: 10, stock: 3 });
+
+      const res = await admin.patch(`/admin/products/${product.id}`, { price: 11.5 }).expect(200);
+      expect(res.body.data.price).toBe('11.50');
+      expect(res.body.data.stock).toBe(3);
     });
 
-    it('POST /products/bulk should reject an item that is not an object', async () => {
-      const response = await request
-        .post('/api/v1/products/bulk')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send([null])
-        .expect(400);
-      expect(response.body.message).toBe('products[0] must be an object');
+    it('needs at least one field', async () => {
+      const admin = await createAdmin('emptypatch');
+      const product = await createProduct(admin);
+      await admin.patch(`/admin/products/${product.id}`, {}).expect(400);
+    });
+
+    it('can put an archived product back on sale', async () => {
+      const admin = await createAdmin('restorer');
+      const product = await createProduct(admin);
+
+      await admin.delete(`/admin/products/${product.id}`).expect(200);
+      const res = await admin.patch(`/admin/products/${product.id}`, { isActive: true }).expect(200);
+      expect(res.body.data.isActive).toBe(true);
+    });
+
+    it('answers 404 for a product that does not exist', async () => {
+      const admin = await createAdmin('missing');
+      await admin.patch('/admin/products/999999', { price: 1 }).expect(404);
+      await admin.get('/admin/products/999999').expect(404);
     });
   });
 });

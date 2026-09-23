@@ -27,7 +27,11 @@ This document lists the runtime and development dependencies for both the backen
 | `db-migrate-pg` | ^1.5 | PostgreSQL driver adapter for db-migrate |
 | `dotenv` | ^16.3 | Loads environment variables from `.env` |
 | `jsonwebtoken` | ^9.0 | JWT creation and verification |
-| `bcrypt` | ^5.1 | Password hashing |
+| `bcrypt` | ^6.0 | Password hashing |
+| `zod` | ^4.6 | Request validation; the schemas also give the input types |
+| `pino` | ^10.3 | Structured logging |
+| `pino-http` | ^11.0 | Request logging, one id per request |
+| `cookie-parser` | ^1.4 | Reads the HttpOnly refresh cookie |
 | `cors` | ^2.8 | Cross-Origin Resource Sharing middleware |
 | `helmet` | ^8.1 | Secure HTTP headers |
 | `express-rate-limit` | ^8.2 | Request rate limiting |
@@ -37,11 +41,14 @@ This document lists the runtime and development dependencies for both the backen
 | Package | Purpose |
 |---|---|
 | `typescript` | TypeScript compiler |
-| `ts-node` | TypeScript execution for scripts |
+| `tsx` | Runs the TypeScript sources directly, so the tests never touch `dist/` |
 | `tsc-watch` | Recompile + restart on file changes |
 | `jasmine` | Test framework |
 | `jasmine-spec-reporter` | Pretty-printed test output |
 | `supertest` | HTTP integration test client |
+| `eslint` + `typescript-eslint` + `@eslint/js` | Linting |
+| `prettier` + `eslint-config-prettier` | Formatting |
+| `pino-pretty` | Readable logs in development |
 | `cross-env` | Cross-platform environment variable setting |
 | `@types/*` | TypeScript type definitions |
 

@@ -29,45 +29,62 @@ export class AuditLogRepository {
         clip(entry.ipAddress, 45),
         clip(entry.userAgent, 255),
         entry.details ? JSON.stringify(entry.details) : null,
-      ]
+      ],
     );
   }
 
   async index(filters: AuditLogFilters, page: Pagination): Promise<AuditLog[]> {
     const params: unknown[] = [];
     let sql = `SELECT * FROM audit_logs${this.where(filters, params)}`;
-    params.push(page.limit);  sql += ` ORDER BY created_at DESC, id DESC LIMIT $${params.length}`;
-    params.push(page.offset); sql += ` OFFSET $${params.length}`;
+    params.push(page.limit);
+    sql += ` ORDER BY created_at DESC, id DESC LIMIT $${params.length}`;
+    params.push(page.offset);
+    sql += ` OFFSET $${params.length}`;
     const { rows } = await pool.query(sql, params);
     return rows.map((row) => this.mapRow(row));
   }
 
   async count(filters: AuditLogFilters): Promise<number> {
     const params: unknown[] = [];
-    const { rows } = await pool.query(`SELECT COUNT(*) FROM audit_logs${this.where(filters, params)}`, params);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) FROM audit_logs${this.where(filters, params)}`,
+      params,
+    );
     return parseInt(rows[0].count, 10);
   }
 
   async deleteOlderThan(days: number): Promise<number> {
     const { rowCount } = await pool.query(
       `DELETE FROM audit_logs WHERE created_at < NOW() - $1::int * INTERVAL '1 day'`,
-      [days]
+      [days],
     );
     return rowCount ?? 0;
   }
 
   private where(filters: AuditLogFilters, params: unknown[]): string {
     const conditions: string[] = [];
-    if (filters.userId) { params.push(filters.userId); conditions.push(`user_id = $${params.length}`); }
+    if (filters.userId) {
+      params.push(filters.userId);
+      conditions.push(`user_id = $${params.length}`);
+    }
     if (filters.username) {
       params.push(filters.username.toLowerCase());
       conditions.push(`STRPOS(LOWER(username), $${params.length}) > 0`);
     }
-    if (filters.actions?.length) { params.push(filters.actions); conditions.push(`action = ANY($${params.length}::varchar[])`); }
+    if (filters.actions?.length) {
+      params.push(filters.actions);
+      conditions.push(`action = ANY($${params.length}::varchar[])`);
+    }
     if (filters.result === 'success') conditions.push('status_code < 400');
     if (filters.result === 'failure') conditions.push('status_code >= 400');
-    if (filters.from) { params.push(filters.from); conditions.push(`created_at >= $${params.length}`); }
-    if (filters.to)   { params.push(filters.to);   conditions.push(`created_at < $${params.length}`); }
+    if (filters.from) {
+      params.push(filters.from);
+      conditions.push(`created_at >= $${params.length}`);
+    }
+    if (filters.to) {
+      params.push(filters.to);
+      conditions.push(`created_at < $${params.length}`);
+    }
     return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
   }
 

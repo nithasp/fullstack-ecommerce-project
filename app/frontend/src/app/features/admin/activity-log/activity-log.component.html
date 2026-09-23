@@ -9,6 +9,11 @@
     </button>
   </div>
 
+  <nav class="activity-log__tabs">
+    <a class="activity-log__tab" routerLink="/admin/activity" routerLinkActive="activity-log__tab--current">Activity log</a>
+    <a class="activity-log__tab" routerLink="/admin/page-views" routerLinkActive="activity-log__tab--current">Page views</a>
+  </nav>
+
   <div class="activity-log__filters">
     <label class="activity-log__field activity-log__field--wide">
       <span class="activity-log__label">User</span>
@@ -60,14 +65,9 @@
       />
     </label>
 
-    <label class="activity-log__check" title="Pages of the app people opened">
-      <input type="checkbox" [ngModel]="filters.showPageViews" (ngModelChange)="setShown('showPageViews', $event)" />
-      Show page views
-    </label>
-
-    <label class="activity-log__check" title="Every GET request the API answered">
+    <label class="activity-log__check" title="Admin views of account data">
       <input type="checkbox" [ngModel]="filters.showApiReads" (ngModelChange)="setShown('showApiReads', $event)" />
-      Show API reads
+      Show reads
     </label>
 
     <button *ngIf="hasFilters" type="button" class="activity-log__clear" (click)="clearFilters()">
@@ -114,7 +114,7 @@
                 {{ log.action | humanize }}
               </span>
             </td>
-            <td>{{ pageName(log) ?? (log.event | humanize) }}</td>
+            <td>{{ log.event | humanize }}</td>
             <td class="activity-log__route" [title]="(log.method ?? '') + ' ' + (log.path ?? '')">
               <span class="activity-log__method">{{ log.method }}</span> {{ log.path }}
             </td>

@@ -1,9 +1,12 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
-import { AuthUser, AuthResponse, RefreshResponse } from '../../models/auth.model';
+import { AuthUser, AuthSession } from '../../models/auth.model';
 import { ApiResponse } from '../../models/api.model';
 import { API } from '../../config/api-config';
+
+// The refresh cookie only travels on calls that send credentials
+const WITH_COOKIE = { withCredentials: true };
 
 @Injectable({ providedIn: 'root' })
 export class AuthApiService {
@@ -11,27 +14,27 @@ export class AuthApiService {
 
   constructor(private http: HttpClient) {}
 
-  login(username: string, password: string): Observable<AuthResponse> {
+  login(username: string, password: string): Observable<AuthSession> {
     return this.http
-      .post<ApiResponse<AuthResponse>>(`${this.baseUrl}/login`, { username, password })
+      .post<ApiResponse<AuthSession>>(`${this.baseUrl}/login`, { username, password }, WITH_COOKIE)
       .pipe(map(res => res.data));
   }
 
-  register(username: string, password: string): Observable<AuthResponse> {
+  register(username: string, password: string): Observable<AuthSession> {
     return this.http
-      .post<ApiResponse<AuthResponse>>(`${this.baseUrl}/register`, { username, password })
+      .post<ApiResponse<AuthSession>>(`${this.baseUrl}/register`, { username, password }, WITH_COOKIE)
       .pipe(map(res => res.data));
   }
 
-  refresh(refreshToken: string): Observable<RefreshResponse> {
+  refresh(): Observable<AuthSession> {
     return this.http
-      .post<ApiResponse<RefreshResponse>>(`${this.baseUrl}/refresh`, { refreshToken })
+      .post<ApiResponse<AuthSession>>(`${this.baseUrl}/refresh`, {}, WITH_COOKIE)
       .pipe(map(res => res.data));
   }
 
-  logout(refreshToken: string): Observable<unknown> {
+  logout(): Observable<unknown> {
     return this.http
-      .post<ApiResponse<null>>(`${this.baseUrl}/logout`, { refreshToken })
+      .post<ApiResponse<null>>(`${this.baseUrl}/logout`, {}, WITH_COOKIE)
       .pipe(map(res => res.data));
   }
 

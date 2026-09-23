@@ -31,7 +31,7 @@ export class AddressApiService {
 
   updateAddress(id: number, form: Partial<AddressForm>): Observable<AddressEntry> {
     return this.http
-      .put<ApiResponse<AddressEntry>>(`${this.baseUrl}/${id}`, form)
+      .patch<ApiResponse<AddressEntry>>(`${this.baseUrl}/${id}`, form)
       .pipe(map(res => res.data));
   }
 

@@ -1,41 +1,42 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
+import { config } from '../config';
 import pool from '../database';
 import { UserRepository } from '../repositories/user.repository';
+import { createUser } from '../services/user.service';
 
 const MIN_PASSWORD_LENGTH = 12;
 
 async function main(): Promise<void> {
-  const { ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_FIRST_NAME, ADMIN_LAST_NAME } = process.env;
+  const { username, password, firstName, lastName } = config.adminSeed;
 
-  if (!ADMIN_USERNAME?.trim() || !ADMIN_PASSWORD)
+  if (!username?.trim() || !password) {
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be set (in .env or the environment).');
-  if (ADMIN_PASSWORD.length < MIN_PASSWORD_LENGTH)
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
 
-  const username = ADMIN_USERNAME.trim();
+  const name = username.trim();
   const users = new UserRepository();
-  const existing = await users.findByUsername(username);
+  const existing = await users.findByUsername(name);
 
   if (existing) {
     if (existing.role === 'admin') {
-      console.log(`[seed:admin] "${username}" (id ${existing.id}) is already an admin. Nothing to do.`);
+      console.log(`[seed:admin] "${name}" (id ${existing.id}) is already an admin. Nothing to do.`);
       return;
     }
     await users.updateRole(existing.id, 'admin');
-    console.log(`[seed:admin] Promoted existing user "${username}" (id ${existing.id}) to admin.`);
+    console.log(`[seed:admin] Promoted existing user "${name}" (id ${existing.id}) to admin.`);
     return;
   }
 
-  const created = await users.create({
-    username,
-    password: ADMIN_PASSWORD,
-    firstName: ADMIN_FIRST_NAME?.trim() || 'Store',
-    lastName: ADMIN_LAST_NAME?.trim() || 'Admin',
+  const created = await createUser({
+    username: name,
+    password,
+    firstName: firstName?.trim() || 'Store',
+    lastName: lastName?.trim() || 'Admin',
     role: 'admin',
   });
-  console.log(`[seed:admin] Created admin "${username}" (id ${created.id}).`);
+  console.log(`[seed:admin] Created admin "${name}" (id ${created.id}).`);
 }
 
 main()

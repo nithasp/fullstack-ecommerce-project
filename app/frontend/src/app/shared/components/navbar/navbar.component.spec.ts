@@ -87,7 +87,7 @@ describe('NavbarComponent', () => {
       id: 1,
       name: 'Test',
       category: 'Test',
-      price: 10,
+      price: '10',
       image: '',
       description: '',
       previewImg: [],

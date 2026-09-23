@@ -1,19 +1,15 @@
 import { Router } from 'express';
 import * as products from '../controllers/products.controller';
-import { verifyAuthToken, requireAdmin } from '../middleware/auth';
+import { verifyAuthToken } from '../middleware/auth';
 
 const router = Router();
 
-// Catalog reads are open to any signed-in user; catalog writes are an admin function (OWASP API5)
+// The catalog is read-only here and shows active products only; /admin/products manages it
 router.use(verifyAuthToken);
 
-router.get('/',           products.index);
-router.get('/popular',    products.mostPopular);
+router.get('/', products.index);
+router.get('/popular', products.mostPopular);
 router.get('/categories', products.categories);
-router.get('/:id',        products.show);
-router.post('/',          requireAdmin, products.create);
-router.post('/bulk',      requireAdmin, products.bulkCreate);
-router.put('/:id',        requireAdmin, products.update);
-router.delete('/:id',     requireAdmin, products.destroy);
+router.get('/:id', products.show);
 
 export default router;

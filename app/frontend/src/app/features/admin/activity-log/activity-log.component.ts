@@ -13,15 +13,14 @@ export interface ActivityFilters {
   result: AuditResult | '';
   from: string; // yyyy-MM-dd, as a date input gives it
   to: string;
-  showPageViews: boolean; // pages of the app people opened (PAGE_VIEW)
-  showApiReads: boolean;  // every GET request the API answered (READ)
+  showApiReads: boolean; // admin views of account data (READ)
 }
 
-// The two checkboxes that let a high-volume type into the list
-export type TypeToggle = 'showPageViews' | 'showApiReads';
+// The checkbox that lets a high-volume type into the list
+export type TypeToggle = 'showApiReads';
 
 const NO_FILTERS: ActivityFilters = {
-  user: '', action: '', result: '', from: '', to: '', showPageViews: false, showApiReads: false,
+  user: '', action: '', result: '', from: '', to: '', showApiReads: false,
 };
 
 // The moment a local day starts, as ISO 8601; `addDays` moves it forward
@@ -55,18 +54,16 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService
   ) { }
 
-  // Page views and API reads outnumber everything else, so each stays hidden until its box is
-  // ticked, both from the list and from the type filter
+  // Reads outnumber everything else, so they stay hidden until the box is ticked, both from the
+  // list and from the type filter
   get actionOptions(): AuditAction[] {
-    const { showPageViews, showApiReads } = this.filters;
-    return AUDIT_ACTIONS.filter(action =>
-      (action !== 'PAGE_VIEW' || showPageViews) && (action !== 'READ' || showApiReads)
-    );
+    const { showApiReads } = this.filters;
+    return AUDIT_ACTIONS.filter(action => action !== 'READ' || showApiReads);
   }
 
   get hasFilters(): boolean {
-    const { user, action, result, from, to, showPageViews, showApiReads } = this.filters;
-    return !!(user.trim() || action || result || from || to || showPageViews || showApiReads);
+    const { user, action, result, from, to, showApiReads } = this.filters;
+    return !!(user.trim() || action || result || from || to || showApiReads);
   }
 
   get rangeStart(): number {
@@ -140,12 +137,6 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
 
   isFailure(log: AuditLog): boolean {
     return (log.statusCode ?? 0) >= 400;
-  }
-
-  // A page view reads best as the page's own name, e.g. "Product detail"
-  pageName(log: AuditLog): string | null {
-    const page = log.action === 'PAGE_VIEW' ? log.details?.['page'] : undefined;
-    return typeof page === 'string' ? page : null;
   }
 
   // The fields an update changed arrive as a list

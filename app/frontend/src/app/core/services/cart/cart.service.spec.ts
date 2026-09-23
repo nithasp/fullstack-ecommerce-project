@@ -20,7 +20,7 @@ describe('CartService', () => {
     id: 1,
     name: 'Test Product',
     category: 'Electronics',
-    price: 79.99,
+    price: '79.99',
     image: 'https://example.com/img.jpg',
     description: 'A test product',
     previewImg: ['https://example.com/img.jpg'],
@@ -33,7 +33,7 @@ describe('CartService', () => {
     ...mockProduct,
     id: 2,
     name: 'Test Product 2',
-    price: 49.99
+    price: '49.99'
   };
 
   beforeEach(() => {
@@ -117,7 +117,7 @@ describe('CartService', () => {
   it('should clear the cart', () => {
     service.addToCartLocal(mockProduct, 1, mockType);
     service.addToCartLocal(mockProduct2, 2);
-    service.clearLocalCart();
+    service.resetCart();
     expect(service.getItems().length).toBe(0);
     expect(service.getTotal()).toBe(0);
     expect(service.getCartCount()).toBe(0);

@@ -4,16 +4,12 @@ import { verifyAuthToken } from '../middleware/auth';
 
 const router = Router();
 
+// Customers can read their own orders; checkout is the only way one is created, and only an admin
+// can change or remove one (OWASP API6)
 router.use(verifyAuthToken);
 
-router.get('/',                       orders.index);
-router.get('/user/:userId/current',   orders.currentOrderByUser);
-router.get('/user/:userId/completed', orders.completedOrdersByUser);
-router.get('/:id/products',           orders.getOrderProducts);
-router.post('/:id/products',          orders.addProduct);
-router.get('/:id',                    orders.show);
-router.post('/',                      orders.create);
-router.put('/:id',                    orders.update);
-router.delete('/:id',                 orders.destroy);
+router.get('/', orders.index);
+router.get('/:id', orders.show);
+router.get('/:id/products', orders.lines);
 
 export default router;

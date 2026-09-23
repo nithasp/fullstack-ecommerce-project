@@ -6,11 +6,11 @@ const router = Router();
 
 router.use(verifyAuthToken);
 
-router.get('/',          cart.getCart);
-router.post('/',         cart.addItem);
+router.get('/', cart.getCart);
+router.post('/', cart.addItem);
 router.post('/checkout', cart.checkout);
-router.put('/:id',       cart.updateItem);
-router.delete('/:id',    cart.removeItem);
-router.delete('/',       cart.clearCart);
+router.patch('/:id', cart.updateItem);
+router.delete('/:id', cart.removeItem);
+router.delete('/', cart.clearCart);
 
 export default router;

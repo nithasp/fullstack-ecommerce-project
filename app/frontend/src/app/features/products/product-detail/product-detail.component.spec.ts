@@ -22,7 +22,7 @@ describe('ProductDetailComponent', () => {
     id: 1,
     name: 'Test Headphones',
     category: 'Electronics',
-    price: 79.99,
+    price: '79.99',
     image: 'https://example.com/main.jpg',
     description: 'Premium wireless headphones',
     previewImg: ['https://example.com/main.jpg', 'https://example.com/side.jpg'],

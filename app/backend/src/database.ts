@@ -1,31 +1,23 @@
-import dotenv from 'dotenv';
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { Pool, PoolClient } from 'pg';
+import { config } from './config';
+import { logger } from './logger';
 
-dotenv.config();
+const { url, host, port, name, user, password, sslMode, sslCa } = config.database;
 
-const { DATABASE_URL, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_TEST_DB, POSTGRES_USER, POSTGRES_PASSWORD, ENV } = process.env;
-
-const isProduction = ENV === 'production';
+// 'no-verify' accepts any certificate the server offers, which a provider with a self-signed
+// certificate needs; it does not protect against a machine in the middle (OWASP API8)
+const ssl =
+  sslMode === 'off'
+    ? false
+    : sslMode === 'no-verify'
+      ? { rejectUnauthorized: false }
+      : { rejectUnauthorized: true, ...(sslCa ? { ca: sslCa } : {}) };
 
 const pool = new Pool(
-  DATABASE_URL
-    ? {
-        connectionString: DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-      }
-    : {
-        host: POSTGRES_HOST,
-        port: parseInt(POSTGRES_PORT as string),
-        database: ENV === 'test' ? POSTGRES_TEST_DB : POSTGRES_DB,
-        user: POSTGRES_USER,
-        password: POSTGRES_PASSWORD,
-        ssl: isProduction ? { rejectUnauthorized: false } : false,
-      }
+  url ? { connectionString: url, ssl } : { host, port, database: name, user, password, ssl },
 );
 
-export interface Queryable {
-  query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>>;
-}
+pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
 
 export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Promise<T> {
   const tx = await pool.connect();

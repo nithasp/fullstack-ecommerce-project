@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
-import { CartApiItem, AddCartItemPayload, CheckoutItem, CheckoutResponse } from '../../models/cart-api.model';
+import { CartApiItem, AddCartItemPayload, CheckoutResponse } from '../../models/cart-api.model';
 import { ApiResponse } from '../../models/api.model';
 import { API } from '../../config/api-config';
 
@@ -25,7 +25,7 @@ export class CartApiService {
 
   updateItem(cartItemId: number, quantity: number): Observable<CartApiItem> {
     return this.http
-      .put<ApiResponse<CartApiItem>>(`${this.baseUrl}/${cartItemId}`, { quantity })
+      .patch<ApiResponse<CartApiItem>>(`${this.baseUrl}/${cartItemId}`, { quantity })
       .pipe(map(res => res.data));
   }
 
@@ -41,9 +41,10 @@ export class CartApiService {
       .pipe(map(res => res.data));
   }
 
-  checkout(items: CheckoutItem[]): Observable<CheckoutResponse> {
+  // The server charges for the cart rows themselves, at the price and stock it holds for them
+  checkout(cartItemIds: number[]): Observable<CheckoutResponse> {
     return this.http
-      .post<ApiResponse<CheckoutResponse>>(`${this.baseUrl}/checkout`, { items })
+      .post<ApiResponse<CheckoutResponse>>(`${this.baseUrl}/checkout`, { cartItemIds })
       .pipe(map(res => res.data));
   }
 }

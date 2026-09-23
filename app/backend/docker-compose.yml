@@ -2,7 +2,7 @@ name: fullstack-ecommerce-project
 
 services:
   postgres:
-    image: postgres:14-alpine
+    image: postgres:17-alpine
     container_name: storefront-postgres
     restart: always
     environment:
@@ -10,12 +10,13 @@ services:
       POSTGRES_PASSWORD: storefront_pass
       POSTGRES_DB: storefront_dev
     ports:
-      - "5432:5432"
+      # Published to this machine only, so the database is not reachable from the local network
+      - '127.0.0.1:5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - postgres17_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U storefront_user -d storefront_dev"]
+      test: ['CMD-SHELL', 'pg_isready -U storefront_user -d storefront_dev']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -25,9 +26,10 @@ services:
     container_name: storefront-adminer
     restart: always
     ports:
-      - "8080:8080"
+      - '127.0.0.1:8080:8080'
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
-  postgres_data:
+  postgres17_data:

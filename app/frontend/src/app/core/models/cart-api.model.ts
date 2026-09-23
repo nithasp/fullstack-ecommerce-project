@@ -5,41 +5,44 @@ export interface CartApiItem {
   userId: number;
   productId: number;
   quantity: number;
-  typeId: string;
+  typeId: string | null;
   selectedType: ProductType | null;
   shopId: string | null;
   shopName: string | null;
   createdAt: string;
   updatedAt: string;
-  productName?: string;
-  productPrice?: number;
-  productCategory?: string;
-  productImage?: string;
-  productDescription?: string;
-  productPreviewImg?: string[];
-  productTypes?: ProductType[];
-  productReviews?: unknown[];
-  productOverallRating?: number;
-  productStock?: number;
-  productIsActive?: boolean;
-  productShopId?: string | null;
-  productShopName?: string | null;
+  // NUMERIC columns arrive as strings so no decimal is lost on the way
+  productName: string;
+  productPrice: string;
+  productCategory: string | null;
+  productImage: string | null;
+  productDescription: string | null;
+  productPreviewImg: string[];
+  productTypes: ProductType[];
+  productReviews: unknown[];
+  productOverallRating: number;
+  productStock: number;
+  productIsActive: boolean;
+  productShopId: string | null;
+  productShopName: string | null;
 }
 
 export interface AddCartItemPayload {
   productId: number;
   quantity: number;
   typeId?: string | null;
-  selectedType?: ProductType | null;
-  shopId?: string | null;
-  shopName?: string | null;
 }
 
-export interface CheckoutItem {
+export interface OrderLine {
+  id: number;
+  orderId: number;
   productId: number;
+  typeId: string | null;
   quantity: number;
+  unitPrice: string;
 }
 
 export interface CheckoutResponse {
-  order: { id: number; userId: number; status: string };
+  order: { id: number; userId: number; status: string; createdAt: string; total: string };
+  items: OrderLine[];
 }

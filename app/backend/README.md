@@ -1,22 +1,31 @@
 # Storefront Backend API
 
+Express + TypeScript + PostgreSQL. Accounts, catalog, cart, checkout, orders, addresses and an
+admin namespace, behind a versioned `/api/v1` path.
+
 ## Setup
 
 ### 1. Install packages
+
 ```bash
 npm install
 ```
 
-### 2. Database setup
-The application uses **PostgreSQL** on port **5432**.
+### 2. Database
+
+PostgreSQL on port **5432**.
 
 **Option A — Docker (recommended):**
-```bash
-docker-compose up -d
-```
-Starts PostgreSQL and creates `storefront_dev` + `storefront_test` databases automatically. Skip to step 4.
 
-**Option B — Local PostgreSQL:**
+```bash
+docker compose up -d
+```
+
+Starts PostgreSQL 17 and Adminer, and creates `storefront_dev` + `storefront_test`. Both ports
+are published to `127.0.0.1` only, so nothing on the local network can reach the database.
+
+**Option B — local PostgreSQL:**
+
 ```sql
 CREATE USER storefront_user WITH PASSWORD 'storefront_pass';
 CREATE DATABASE storefront_dev;
@@ -25,162 +34,219 @@ GRANT ALL PRIVILEGES ON DATABASE storefront_dev TO storefront_user;
 GRANT ALL PRIVILEGES ON DATABASE storefront_test TO storefront_user;
 ```
 
-### 3. Environment variables
-Copy `.env.example` to `.env` and fill in values:
+### 3. Environment
 
-```
-ENV=dev
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
-POSTGRES_DB=storefront_dev
-POSTGRES_TEST_DB=storefront_test
-POSTGRES_USER=storefront_user
-POSTGRES_PASSWORD=storefront_pass
-BCRYPT_PASSWORD=your-secret-pepper
-SALT_ROUNDS=10
-TOKEN_SECRET=your-jwt-secret
-ACCESS_TOKEN_EXPIRY=15m
-REFRESH_TOKEN_EXPIRY_DAYS=7
-PORT=3000
-ALLOWED_ORIGIN=http://localhost:4200
-API_RATE_LIMIT=500          # requests per IP per 15 min (optional)
-JSON_BODY_LIMIT=1mb         # max JSON body (optional)
-AUDIT_LOG_RETENTION_DAYS=90 # days an audit-log entry is kept (optional)
-ADMIN_USERNAME=admin        # used by `npm run seed:admin` only
-ADMIN_PASSWORD=change-me-to-a-long-password
+Copy `.env.example` to `.env` and fill it in. The server **refuses to start** when a required
+value is missing or too short, so nothing silently falls back to an insecure default.
+
+| Variable | Required | Notes |
+| -------- | -------- | ----- |
+| `ENV` | – | `dev` (default), `test` or `production` |
+| `DATABASE_URL` | one of | A full connection string (managed providers) |
+| `POSTGRES_HOST` / `PORT` / `DB` / `TEST_DB` / `USER` / `PASSWORD` | one of | Used when there is no `DATABASE_URL` |
+| `DATABASE_SSL` | – | `off` (local), `verify`, or `no-verify` for a provider with a self-signed certificate. Defaults to `verify` when `DATABASE_URL` is set, `off` otherwise |
+| `DATABASE_SSL_CA` | – | A CA certificate to verify against, if the provider publishes one |
+| `TOKEN_SECRET` | **yes** | 32+ characters. Signs access tokens |
+| `PASSWORD_PEPPER` | **yes** | 32+ characters. Mixed into every password hash |
+| `BCRYPT_PASSWORD` | – | The pepper of the **old** hashing scheme. Keep it until every account has signed in once after the upgrade; each login re-hashes that password under `PASSWORD_PEPPER` |
+| `SALT_ROUNDS` | – | bcrypt cost, 10–15 (default 10) |
+| `ACCESS_TOKEN_EXPIRY` | – | Default `15m`. Access tokens cannot be revoked, so keep this short |
+| `REFRESH_TOKEN_EXPIRY_DAYS` | – | Default 7 |
+| `PORT` | – | Default 3000 |
+| `ALLOWED_ORIGIN` | – | Comma-separated browser origins allowed to call the API |
+| `TRUST_PROXY` | – | Number of proxies in front of the app (Railway and similar: 1). Decides which IP the rate limiter and the audit log see |
+| `LOG_LEVEL` | – | `info` by default, `silent` under `ENV=test` |
+| `API_RATE_LIMIT` / `AUTH_RATE_LIMIT` | – | Requests per IP per 15 minutes (500 / 20) |
+| `JSON_BODY_LIMIT` | – | Default `1mb` |
+| `AUDIT_LOG_RETENTION_DAYS` / `PAGE_VIEW_RETENTION_DAYS` | – | Default 90 each |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_FIRST_NAME` / `ADMIN_LAST_NAME` | – | Used by `npm run seed:admin` only |
+
+Generate a secret or a pepper with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
 ### 4. Run migrations
+
 ```bash
 npm run migrate:up
 ```
 
-### 4b. Create the first admin
-Self-registration always creates a `customer`. The only ways to get an `admin` account are this script or an existing admin calling `PUT /api/v1/admin/users/:id/role`.
+### 5. Create the first admin
+
+Self-registration always creates a `customer`. The only ways to get an `admin` are this script
+or an existing admin calling `PUT /api/v1/admin/users/:id/role`.
 
 ```bash
 # set ADMIN_USERNAME / ADMIN_PASSWORD (12+ chars) in .env, then:
 npm run seed:admin
 ```
+
 Re-running it is safe: an existing account with that username is promoted, not recreated.
 
-### 5. Start the server
+### 6. Start the server
+
 ```bash
-npm run watch    # development (auto-reload)
-npm start        # production (build first)
+npm run watch    # development, recompiles and restarts on save
+npm run build && npm start
 ```
 
-### 6. Run tests
+### 7. Run the checks
+
 ```bash
-npm test
+npm test         # resets the test database, then the suite
+npm run lint
+npm run typecheck
+npm run format:check
 ```
 
 ---
 
 ## Code layout
 
-A request passes through four layers, each in its own folder under `src/`:
+A request passes through four layers under `src/`:
 
 ```
 routes/        URL + middleware chain per domain (express.Router), mounted under /api/v1 by routes/index.ts
-controllers/   Read and validate the request, call a repository or service, send the response
-services/      Logic that spans several repositories or needs a transaction (tokens, checkout)
-repositories/  One class per table; parameterized SQL and row mapping, nothing HTTP-specific
+controllers/   Parse the request with a schema, call a service, send the response
+services/      The business rules: ownership, checkout, sessions, passwords, activity
+repositories/  One class per table: parameterized SQL and row mapping, nothing HTTP-specific
 ```
 
-Around them: `app.ts` assembles the Express app (tests import it), `server.ts` calls `listen`
-and schedules the daily audit-log cleanup, `middleware/` holds auth, rate limiting and the
-audit log, `utils/` the shared validators, response
-helpers and error handler, and `types/` the shapes passed between layers. Simple CRUD goes
-straight from controller to repository; a service exists only where there is real logic.
+Around them:
+
+| Path | What it holds |
+| ---- | ------------- |
+| `app.ts` | Assembles the Express app (the tests import this) |
+| `server.ts` | `listen`, the daily cleanup job, and a graceful shutdown on SIGTERM |
+| `config.ts` | The environment, validated once at startup; nothing else reads `process.env` |
+| `logger.ts` | Structured logging (pino); every request gets an id, echoed as `X-Request-Id` |
+| `schemas/` | zod schemas — one per request body, query or parameter set. They also give the input types |
+| `middleware/` | Auth, rate limiting and the audit log |
+| `utils/` | Response envelope and error handler, schema parsing, the refresh cookie |
+| `types/` | The shapes passed between layers and returned to clients |
 
 ---
 
-## API Reference
+## API reference
 
-The full API is described by [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0.3, all 65 routes).
-With the server running, browse it as Swagger UI:
+The full API is described by [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0.3). With the server
+running, browse it as Swagger UI:
 
-| URL                              | What it is                                  |
-| -------------------------------- | ------------------------------------------- |
-| `http://localhost:3000/docs`     | Swagger UI — browse and call every endpoint |
-| `http://localhost:3000/openapi.yaml` | The raw spec                            |
+| URL | What it is |
+| --- | ---------- |
+| `http://localhost:3000/docs` | Swagger UI — browse and call every endpoint |
+| `http://localhost:3000/openapi.yaml` | The raw spec |
 
 Click **Authorize** and paste an `accessToken` to use "Try it out" on authenticated routes.
-
-The spec file also imports into Postman, Insomnia or an API client of your choice, and
-generates typed clients via `openapi-generator` / `openapi-typescript`.
 
 Both doc routes are public. To take them off a deployed instance, drop the `app.use(docsRoutes)`
 line in [`src/app.ts`](src/app.ts).
 
----
+### Route groups
 
-## API Routes
-
-Every API route is versioned under `/api/v1`, so a breaking change can ship as `/api/v2` alongside it.
-
-| Group      | Base Path            | Auth Required            |
-| ---------- | -------------------- | ------------------------ |
-| Auth       | `/api/v1/auth`       | Partial                  |
-| Users      | `/api/v1/users`      | JWT (list/create: admin) |
-| Products   | `/api/v1/products`   | JWT (writes: admin)      |
-| Orders     | `/api/v1/orders`     | JWT                      |
-| Cart       | `/api/v1/cart`       | JWT                      |
-| Addresses  | `/api/v1/addresses`  | JWT                      |
-| Page views | `/api/v1/page-views` | JWT                      |
-| Admin      | `/api/v1/admin`      | JWT + admin role         |
+| Group | Base path | Who |
+| ----- | --------- | --- |
+| Auth | `/api/v1/auth` | Public, except `me` and `logout-all` |
+| Users | `/api/v1/users` | The token's own account only |
+| Products | `/api/v1/products` | Any signed-in user; read-only, products on sale only |
+| Orders | `/api/v1/orders` | The token's own orders; read-only |
+| Cart | `/api/v1/cart` | The token's own cart, and checkout |
+| Addresses | `/api/v1/addresses` | The token's own addresses |
+| Page views | `/api/v1/page-views` | Any signed-in user |
+| Admin | `/api/v1/admin` | Admins: accounts, catalog, orders, carts, addresses, activity |
 
 List routes are paginated with `?limit=` (1–100, default 50) and `?offset=`, and return a
 `meta: { limit, offset, total }` object next to `data`.
 
+### Sessions
+
+`POST /auth/register`, `/auth/login` and `/auth/refresh` return `{ user, accessToken }` and set
+the refresh token as an **HttpOnly cookie** (`SameSite=Strict`, `Path=/api/v1/auth`, `Secure` in
+production) that JavaScript cannot read. Browser clients send those calls with credentials, and
+the API has to be on the same site as the page for the cookie to travel — in production that
+means a shared domain, e.g. `store.example.com` and `api.example.com`.
+
+Refresh tokens rotate on every use, and presenting one twice revokes that whole session.
+
 ### Roles
-Every account has a `role`: `customer` (default) or `admin`.
 
-- **Customers** only reach their own users/orders/cart/addresses (another user's id returns `403` or `404`).
-- **Admins** bypass those ownership checks and get the `/admin` namespace: list and CRUD **every** user's orders, carts and addresses, manage users and roles, and write to the product catalog.
-- Admin routes re-check the role in the database on every call.
+- **Customers** reach their own account, orders, cart and addresses. Another account's id
+  answers `403`, or `404` where the existence of a row should not be revealed.
+- **Admins** get `/admin/*`. Cross-account work lives there — an admin's token is not a
+  skeleton key on the customer routes.
+- Admin routes re-read the role from the database on every call, so a demoted or closed admin
+  loses access at once.
 
-### Audit log
-Every request a signed-in user makes is saved to the `audit_logs` table: who, when, the route, the
-result and a few non-secret details (never passwords, tokens or request bodies). Logins, failed
-logins, logouts, registrations and replayed refresh tokens are saved too, and the frontend reports
-each page a signed-in user opens (`POST /api/v1/page-views`, saved as `PAGE_VIEW`).
+### Activity trail
 
-- Admins read it at `GET /api/v1/admin/audit-logs` (filter by user, type, result and time range) or on the frontend's **Activity Log** page.
-- It is read-only: no route edits or deletes an entry, and reading the log is not itself recorded.
-- Entries older than `AUDIT_LOG_RETENTION_DAYS` (default 90) are deleted at startup and then once a day.
+Two tables, kept apart:
 
-See [API_TESTING.md](API_TESTING.md) for full cURL examples and [SECURITY.md](SECURITY.md) for how the API maps to the OWASP API Security Top 10.
+- **`audit_logs`** — security-relevant events: every write by a signed-in user, admin reads of
+  account data, logins, failed logins, logouts, registrations and replayed refresh tokens, each
+  with a few non-secret details. Routine catalog reads are not recorded. Admins read it at
+  `GET /api/v1/admin/audit-logs` or on the frontend's **Activity Log** page.
+- **`page_views`** — analytics: the pages people open, reported by the frontend with
+  `POST /api/v1/page-views` and read at `GET /api/v1/admin/page-views` (the **Page views** page).
+
+Both are read-only over the API, and rows older than their retention setting are deleted daily.
+
+See [API_TESTING.md](API_TESTING.md) for cURL examples and [SECURITY.md](SECURITY.md) for how the
+API maps to the OWASP API Security Top 10.
 
 ---
 
+## Deploying
+
+The [`Dockerfile`](Dockerfile) builds in two stages and ships a runtime image with no compiler,
+no dev dependencies and no TypeScript sources, running as the unprivileged `node` user.
+
+```bash
+docker build -t storefront-backend .
+docker run --rm -p 3000:3000 --env-file .env storefront-backend
+```
+
+Migrations are a **release step**, not something the server does at boot.
+[`railway.json`](railway.json) wires that up for Railway (`preDeployCommand`); on another
+platform run `npm run migrate:prod` before the new version starts.
+
+A deployment needs at least: `ENV=production`, `DATABASE_URL` (plus `DATABASE_SSL` if the
+provider uses a self-signed certificate), `TOKEN_SECRET`, `PASSWORD_PEPPER`, `ALLOWED_ORIGIN`
+and `TRUST_PROXY`.
+
 ## Ports
 
-| Service  | Port |
-| -------- | ---- |
-| Backend  | 3000 |
-| Database | 5432 |
+| Service | Port |
+| ------- | ---- |
+| Backend | 3000 |
+| Database | 5432 (published to `127.0.0.1`) |
+| Adminer | 8080 (published to `127.0.0.1`) |
 
 ## Scripts
 
-| Command                  | Description                |
-| ------------------------ | -------------------------- |
-| `npm run watch`          | Dev server with auto-reload |
-| `npm run build`          | Compile TypeScript          |
-| `npm start`              | Run compiled server         |
-| `npm test`               | Run test suite              |
-| `npm run migrate:up`     | Run migrations              |
-| `npm run migrate:down`   | Rollback last migration     |
-| `npm run migrate:reset`  | Reset all migrations        |
-| `npm run seed:admin`     | Create/promote the admin account from `ADMIN_USERNAME` / `ADMIN_PASSWORD` |
+| Command | Description |
+| ------- | ----------- |
+| `npm run watch` | Dev server, recompiles and restarts on save |
+| `npm run build` | Compile TypeScript into `dist/` (sources only, no tests) |
+| `npm start` | Run the compiled server |
+| `npm test` | Reset the test database, then run the suite |
+| `npm run typecheck` | Type-check everything, including the tests |
+| `npm run lint` / `lint:fix` | ESLint |
+| `npm run format` / `format:check` | Prettier |
+| `npm run migrate:up` / `migrate:down` / `migrate:reset` | Migrations on the dev database |
+| `npm run migrate:prod` | Migrations on the production database |
+| `npm run seed:admin` | Create or promote the admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD` |
+
+Tests run from the TypeScript sources through `tsx`, so `npm test` never touches `dist/` and a
+running `npm run watch` survives it.
 
 ## Documentation
 
-| File                                 | Contents                                    |
-| ------------------------------------ | ------------------------------------------- |
-| [openapi.yaml](openapi.yaml)         | OpenAPI 3.0.3 spec — every route, schema and error |
-| [API_TESTING.md](API_TESTING.md)     | cURL examples for each endpoint             |
-| [SECURITY.md](SECURITY.md)           | How the API maps to the OWASP API Top 10    |
-| [DOCKER_GUIDE.md](DOCKER_GUIDE.md)   | Running the stack in Docker                 |
-| [REQUIREMENTS.md](REQUIREMENTS.md)   | Original project requirements               |
+| File | Contents |
+| ---- | -------- |
+| [openapi.yaml](openapi.yaml) | OpenAPI 3.0.3 spec — every route, schema and error |
+| [API_TESTING.md](API_TESTING.md) | cURL examples for each endpoint |
+| [SECURITY.md](SECURITY.md) | How the API maps to the OWASP API Top 10 |
+| [DOCKER_GUIDE.md](DOCKER_GUIDE.md) | Running the stack in Docker |
+| [REQUIREMENTS.md](REQUIREMENTS.md) | Endpoints and database schema |

@@ -7,7 +7,13 @@ import { provideHttpClient } from '@angular/common/http';
 
 import { AuthService } from './auth.service';
 import { AuthApiService } from './auth-api.service';
-import { AuthResponse, RefreshResponse } from '../../models/auth.model';
+import { AuthSession } from '../../models/auth.model';
+
+function jwt(expSeconds: number): string {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = btoa(JSON.stringify({ exp: expSeconds }));
+  return `${header}.${payload}.signature`;
+}
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -15,7 +21,7 @@ describe('AuthService', () => {
 
   const API = 'http://localhost:3000/api/v1/auth';
 
-  const mockAuthResponse: AuthResponse = {
+  const mockSession: AuthSession = {
     user: {
       id: 1,
       username: 'testuser',
@@ -23,8 +29,7 @@ describe('AuthService', () => {
       lastName: 'User',
       role: 'customer',
     },
-    accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoxfSwiZXhwIjo5OTk5OTk5OTk5fQ.abc',
-    refreshToken: 'refresh_token_mock',
+    accessToken: jwt(9999999999),
   };
 
   beforeEach(() => {
@@ -55,11 +60,10 @@ describe('AuthService', () => {
   // ── Register ───────────────────────────────────────────────────────────────
 
   describe('register', () => {
-    it('should POST to /auth/register and store tokens', () => {
+    it('should POST to /auth/register and start a session', () => {
       service.register('testuser', 'password123').subscribe((res) => {
         expect(res.user.username).toBe('testuser');
         expect(res.accessToken).toBeDefined();
-        expect(res.refreshToken).toBeDefined();
       });
 
       const req = httpMock.expectOne(`${API}/register`);
@@ -68,11 +72,13 @@ describe('AuthService', () => {
         username: 'testuser',
         password: 'password123',
       });
+      // the refresh cookie only comes back on a call that sends credentials
+      expect(req.request.withCredentials).toBeTrue();
 
-      req.flush({ status: 200, message: 'ok', data: mockAuthResponse });
+      req.flush({ status: 200, message: 'ok', data: mockSession });
 
-      expect(localStorage.getItem('accessToken')).toBe(mockAuthResponse.accessToken);
-      expect(localStorage.getItem('refreshToken')).toBe(mockAuthResponse.refreshToken);
+      expect(service.getAccessToken()).toBe(mockSession.accessToken);
+      expect(service.getCurrentUser()?.username).toBe('testuser');
     });
 
     it('should emit isLoggedIn$ = true after successful register', () => {
@@ -80,7 +86,7 @@ describe('AuthService', () => {
       service.isLoggedIn$.subscribe((val) => (loggedIn = val));
 
       service.register('u', 'p').subscribe();
-      httpMock.expectOne(`${API}/register`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
+      httpMock.expectOne(`${API}/register`).flush({ status: 200, message: 'ok', data: mockSession });
 
       expect(loggedIn).toBeTrue();
     });
@@ -94,7 +100,7 @@ describe('AuthService', () => {
       httpMock
         .expectOne(`${API}/register`)
         .flush(
-          { error: 'Username already exists' },
+          { status: 409, message: 'Username already exists', data: null, code: 'conflict' },
           { status: 409, statusText: 'Conflict' }
         );
 
@@ -105,16 +111,18 @@ describe('AuthService', () => {
   // ── Login ──────────────────────────────────────────────────────────────────
 
   describe('login', () => {
-    it('should POST to /auth/login and store tokens', () => {
+    it('should POST to /auth/login and keep the access token in memory only', () => {
       service.login('testuser', 'password123').subscribe((res) => {
         expect(res.user.username).toBe('testuser');
       });
 
       const req = httpMock.expectOne(`${API}/login`);
       expect(req.request.method).toBe('POST');
-      req.flush({ status: 200, message: 'ok', data: mockAuthResponse });
+      req.flush({ status: 200, message: 'ok', data: mockSession });
 
-      expect(localStorage.getItem('accessToken')).toBe(mockAuthResponse.accessToken);
+      expect(service.getAccessToken()).toBe(mockSession.accessToken);
+      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 
     it('should emit isLoggedIn$ = true after successful login', () => {
@@ -122,7 +130,7 @@ describe('AuthService', () => {
       service.isLoggedIn$.subscribe((val) => (loggedIn = val));
 
       service.login('u', 'p').subscribe();
-      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockSession });
 
       expect(loggedIn).toBeTrue();
     });
@@ -136,7 +144,7 @@ describe('AuthService', () => {
       httpMock
         .expectOne(`${API}/login`)
         .flush(
-          { error: 'Invalid username or password' },
+          { status: 401, message: 'Invalid username or password', data: null, code: 'invalid_credentials' },
           { status: 401, statusText: 'Unauthorized' }
         );
 
@@ -147,76 +155,84 @@ describe('AuthService', () => {
   // ── Token helpers ──────────────────────────────────────────────────────────
 
   describe('token helpers', () => {
-    it('hasValidToken should return false when no token stored', () => {
+    it('hasValidToken should return false before a session starts', () => {
       expect(service.hasValidToken()).toBeFalse();
     });
 
     it('hasValidToken should return true for a non-expired JWT', () => {
-      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-      const payload = btoa(JSON.stringify({ exp: 9999999999 }));
-      const fakeJwt = `${header}.${payload}.signature`;
+      service.login('u', 'p').subscribe();
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockSession });
 
-      localStorage.setItem('accessToken', fakeJwt);
       expect(service.hasValidToken()).toBeTrue();
     });
 
     it('hasValidToken should return false for an expired JWT', () => {
-      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-      const payload = btoa(JSON.stringify({ exp: 1000000000 }));
-      const fakeJwt = `${header}.${payload}.signature`;
+      service.login('u', 'p').subscribe();
+      httpMock
+        .expectOne(`${API}/login`)
+        .flush({ status: 200, message: 'ok', data: { ...mockSession, accessToken: jwt(1000000000) } });
 
-      localStorage.setItem('accessToken', fakeJwt);
       expect(service.hasValidToken()).toBeFalse();
     });
+  });
 
-    it('getAccessToken should return stored token', () => {
-      localStorage.setItem('accessToken', 'my_token');
-      expect(service.getAccessToken()).toBe('my_token');
+  // ── Session start ──────────────────────────────────────────────────────────
+
+  describe('initializeAuth', () => {
+    it('should not ask the server when no session was cached', () => {
+      let settled = false;
+      service.initializeAuth().subscribe(() => (settled = true));
+
+      httpMock.expectNone(`${API}/refresh`);
+      expect(settled).toBeTrue();
+      expect(service.isLoggedIn).toBeFalse();
     });
 
-    it('getRefreshToken should return stored refresh token', () => {
-      localStorage.setItem('refreshToken', 'my_refresh');
-      expect(service.getRefreshToken()).toBe('my_refresh');
+    it('should renew the session from the cookie when a profile was cached', () => {
+      localStorage.setItem('currentUser', JSON.stringify(mockSession.user));
+
+      service.initializeAuth().subscribe();
+      const req = httpMock.expectOne(`${API}/refresh`);
+      expect(req.request.withCredentials).toBeTrue();
+      req.flush({ status: 200, message: 'ok', data: mockSession });
+
+      expect(service.isLoggedIn).toBeTrue();
+      expect(service.getAccessToken()).toBe(mockSession.accessToken);
+    });
+
+    it('should sign out when the cookie is gone', () => {
+      localStorage.setItem('currentUser', JSON.stringify(mockSession.user));
+
+      service.initializeAuth().subscribe();
+      httpMock
+        .expectOne(`${API}/refresh`)
+        .flush({ status: 401, message: 'Invalid or expired refresh token', data: null, code: 'token_invalid' },
+          { status: 401, statusText: 'Unauthorized' });
+
+      expect(service.isLoggedIn).toBeFalse();
+      expect(localStorage.getItem('currentUser')).toBeNull();
     });
   });
 
   // ── Refresh ────────────────────────────────────────────────────────────────
 
   describe('refreshAccessToken', () => {
-    it('should POST refresh token and update stored access token', () => {
-      localStorage.setItem('refreshToken', 'old_refresh');
-
-      const refreshResponse: RefreshResponse = {
-        accessToken: 'new_access_token',
-        refreshToken: 'old_refresh',
-      };
-
+    it('should POST an empty body and update the token it holds', () => {
       service.refreshAccessToken().subscribe((res) => {
-        expect(res.accessToken).toBe('new_access_token');
+        expect(res.accessToken).toBe(mockSession.accessToken);
       });
 
       const req = httpMock.expectOne(`${API}/refresh`);
       expect(req.request.method).toBe('POST');
-      expect(req.request.body).toEqual({ refreshToken: 'old_refresh' });
+      expect(req.request.body).toEqual({});
+      expect(req.request.withCredentials).toBeTrue();
 
-      req.flush({ status: 200, message: 'ok', data: refreshResponse });
+      req.flush({ status: 200, message: 'ok', data: mockSession });
 
-      expect(localStorage.getItem('accessToken')).toBe('new_access_token');
+      expect(service.getAccessToken()).toBe(mockSession.accessToken);
     });
 
-    it('should throw when no refresh token is stored', () => {
-      let errorMsg = '';
-      service.refreshAccessToken().subscribe({
-        error: (err: Error) => (errorMsg = err.message),
-      });
-
-      expect(errorMsg).toBe('No refresh token available');
-    });
-
-    it('should propagate error when refresh token is rejected by backend', () => {
-      localStorage.setItem('refreshToken', 'expired_refresh');
-      localStorage.setItem('accessToken', 'old_access');
-
+    it('should propagate the error when the session is rejected', () => {
       let errorReceived = false;
       service.refreshAccessToken().subscribe({
         error: () => (errorReceived = true),
@@ -225,7 +241,7 @@ describe('AuthService', () => {
       httpMock
         .expectOne(`${API}/refresh`)
         .flush(
-          { error: 'Refresh token has expired' },
+          { status: 401, message: 'Invalid or expired refresh token', data: null, code: 'token_invalid' },
           { status: 401, statusText: 'Unauthorized' }
         );
 
@@ -236,18 +252,17 @@ describe('AuthService', () => {
   // ── Logout ─────────────────────────────────────────────────────────────────
 
   describe('logout', () => {
-    it('should remove all auth data from localStorage', () => {
-      localStorage.setItem('accessToken', 'a');
-      localStorage.setItem('refreshToken', 'r');
-      localStorage.setItem('currentUser', '{}');
+    it('should tell the server and drop everything it holds', () => {
+      service.login('u', 'p').subscribe();
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockSession });
 
       service.logout();
 
-      // Flush the fire-and-forget POST to /auth/logout
-      httpMock.expectOne(`${API}/logout`).flush({});
+      const req = httpMock.expectOne(`${API}/logout`);
+      expect(req.request.withCredentials).toBeTrue();
+      req.flush({ status: 200, message: 'ok', data: null });
 
-      expect(localStorage.getItem('accessToken')).toBeNull();
-      expect(localStorage.getItem('refreshToken')).toBeNull();
+      expect(service.getAccessToken()).toBeNull();
       expect(localStorage.getItem('currentUser')).toBeNull();
     });
 
@@ -255,8 +270,8 @@ describe('AuthService', () => {
       let loggedIn = true;
       service.isLoggedIn$.subscribe((val) => (loggedIn = val));
 
-      // No refreshToken in localStorage → logout() clears session without HTTP call
       service.logout();
+      httpMock.expectOne(`${API}/logout`).flush({ status: 200, message: 'ok', data: null });
 
       expect(loggedIn).toBeFalse();
     });
@@ -271,7 +286,7 @@ describe('AuthService', () => {
 
     it('should return the stored user after successful login', () => {
       service.login('testuser', 'pass').subscribe();
-      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockAuthResponse });
+      httpMock.expectOne(`${API}/login`).flush({ status: 200, message: 'ok', data: mockSession });
 
       const user = service.getCurrentUser();
       expect(user?.username).toBe('testuser');

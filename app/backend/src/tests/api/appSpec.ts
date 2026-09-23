@@ -1,20 +1,36 @@
-import supertest from 'supertest';
-import app from '../../app';
-
-const request = supertest(app);
+import { api, API } from '../support/api';
 
 describe('App', () => {
-  it('GET / should answer the health check', async () => {
-    const res = await request.get('/').expect(200);
+  it('answers the health check', async () => {
+    const res = await api.get('/').expect(200);
     expect(res.body.message).toBe('Storefront API is running!');
   });
 
-  it('should answer an unknown route with a JSON 404 in the envelope', async () => {
-    const res = await request.get('/api/v1/no-such-route').expect(404);
-    expect(res.body).toEqual({ status: 404, message: 'Route GET /api/v1/no-such-route not found', data: null });
+  it('answers an unknown route with a JSON 404 in the envelope', async () => {
+    const res = await api.get(`${API}/no-such-route`).expect(404);
+    expect(res.body).toEqual({
+      status: 404,
+      message: `Route GET ${API}/no-such-route not found`,
+      data: null,
+      code: 'not_found',
+    });
   });
 
-  it('should serve the API only under /api/v1', async () => {
-    await request.post('/auth/login').send({ username: 'anyone', password: 'anything' }).expect(404);
+  it('serves the API only under /api/v1', async () => {
+    await api.post('/auth/login').send({ username: 'anyone', password: 'anything' }).expect(404);
+  });
+
+  it('gives every response a request id', async () => {
+    const res = await api.get('/').expect(200);
+    expect(res.headers['x-request-id']).toBeDefined();
+  });
+
+  it('rejects a body that is not valid JSON', async () => {
+    const res = await api
+      .post(`${API}/auth/login`)
+      .set('Content-Type', 'application/json')
+      .send('{"username":')
+      .expect(400);
+    expect(res.body.message).toBe('Request body must be valid JSON');
   });
 });

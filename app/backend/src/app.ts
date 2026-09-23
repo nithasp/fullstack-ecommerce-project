@@ -1,22 +1,47 @@
-import express, { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import express, { Request, Response } from 'express';
 import helmet from 'helmet';
+import pinoHttp from 'pino-http';
+import { config } from './config';
+import { logger } from './logger';
+import { recordActivity } from './middleware/audit';
+import { apiLimiter } from './middleware/rateLimit';
 import apiRoutes from './routes';
 import docsRoutes from './routes/docs.routes';
-import { apiLimiter } from './middleware/rateLimit';
-import { recordActivity } from './middleware/audit';
 import { errorMiddleware, notFoundMiddleware } from './utils/response';
-import { config } from './config';
 
 export const API_PREFIX = '/api/v1';
 
+const MAX_REQUEST_ID_LENGTH = 64;
+
 const app = express();
 
-app.set('trust proxy', 1);
+app.set('trust proxy', config.trustProxy);
+
+app.use(
+  pinoHttp({
+    logger,
+    genReqId: (req, res) => {
+      const forwarded = req.headers['x-request-id'];
+      const id =
+        typeof forwarded === 'string' && forwarded.length > 0 && forwarded.length <= MAX_REQUEST_ID_LENGTH
+          ? forwarded
+          : randomUUID();
+      res.setHeader('X-Request-Id', id);
+      return id;
+    },
+    customLogLevel: (_req, res, err) =>
+      err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+  }),
+);
+
 app.use(helmet());
 app.use(cors({ origin: config.allowedOrigins, credentials: true }));
 // Bounded body size so a single request can't exhaust memory (OWASP API4); bulk product import stays well under it
 app.use(express.json({ limit: config.jsonBodyLimit }));
+app.use(cookieParser());
 app.set('etag', false);
 
 // Per-IP ceiling on every route (OWASP API4); the auth routes add a tighter one of their own

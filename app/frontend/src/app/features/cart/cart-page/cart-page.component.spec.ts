@@ -19,7 +19,7 @@ describe('CartPageComponent', () => {
     id: 1,
     name: 'Test Product',
     category: 'Electronics',
-    price: 79.99,
+    price: '79.99',
     image: 'https://example.com/img.jpg',
     description: 'A test product',
     previewImg: [],
@@ -37,7 +37,7 @@ describe('CartPageComponent', () => {
     ...mockProduct,
     id: 2,
     name: 'Test Product 2',
-    price: 49.99,
+    price: '49.99',
     shopId: 'shop2',
     shopName: 'Another Shop'
   };

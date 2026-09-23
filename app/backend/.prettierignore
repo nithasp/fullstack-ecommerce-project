@@ -1,0 +1,9 @@
+dist
+node_modules
+coverage
+package-lock.json
+openapi.yaml
+postman
+sample-product-data
+migrations
+*.md

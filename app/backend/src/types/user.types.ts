@@ -1,6 +1,20 @@
-export type UserRole = 'customer' | 'admin';
+export const USER_ROLES = ['customer', 'admin'] as const;
 
-export const USER_ROLES: readonly UserRole[] = ['customer', 'admin'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export interface PublicUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  username: string;
+  role: UserRole;
+}
+
+// Never sent to a client: it carries the password hash
+export interface StoredUser extends PublicUser {
+  passwordHash: string;
+  passwordVersion: number;
+}
 
 export interface NewUser {
   firstName: string;
@@ -10,14 +24,13 @@ export interface NewUser {
   role?: UserRole;
 }
 
-// The role is changed only through UserRepository.updateRole, so it can't ride along on a profile update.
-export type UserUpdate = Partial<Omit<NewUser, 'role'>>;
+export interface NewUserRow extends Omit<NewUser, 'password'> {
+  passwordHash: string;
+  passwordVersion: number;
+}
 
-// There is no password field, so the hash can't leak by accident.
-export interface PublicUser {
-  id: number;
-  firstName: string;
-  lastName: string;
-  username: string;
-  role: UserRole;
+export interface ProfileUpdate {
+  firstName?: string;
+  lastName?: string;
+  username?: string;
 }

@@ -1,0 +1,141 @@
+<div class="activity-log animate-fade-in">
+  <div class="activity-log__header">
+    <div>
+      <h1 class="activity-log__title">Page views</h1>
+      <p class="activity-log__subtitle">Which pages people opened, and when. Newest first.</p>
+    </div>
+    <button type="button" class="activity-log__refresh" [disabled]="isLoading" (click)="refresh()">
+      Refresh
+    </button>
+  </div>
+
+  <nav class="activity-log__tabs">
+    <a class="activity-log__tab" routerLink="/admin/activity" routerLinkActive="activity-log__tab--current">Activity log</a>
+    <a class="activity-log__tab" routerLink="/admin/page-views" routerLinkActive="activity-log__tab--current">Page views</a>
+  </nav>
+
+  <div class="activity-log__filters">
+    <label class="activity-log__field activity-log__field--wide">
+      <span class="activity-log__label">User</span>
+      <input
+        type="search"
+        class="activity-log__control"
+        placeholder="User id or username"
+        [ngModel]="filters.user"
+        (ngModelChange)="onTextFilterChange('user', $event)"
+      />
+    </label>
+
+    <label class="activity-log__field activity-log__field--wide">
+      <span class="activity-log__label">Page path</span>
+      <input
+        type="search"
+        class="activity-log__control"
+        placeholder="/products"
+        [ngModel]="filters.path"
+        (ngModelChange)="onTextFilterChange('path', $event)"
+      />
+    </label>
+
+    <label class="activity-log__field">
+      <span class="activity-log__label">From</span>
+      <input
+        type="date"
+        class="activity-log__control"
+        [attr.max]="filters.to || null"
+        [ngModel]="filters.from"
+        (ngModelChange)="setFilter('from', $event)"
+      />
+    </label>
+
+    <label class="activity-log__field">
+      <span class="activity-log__label">To</span>
+      <input
+        type="date"
+        class="activity-log__control"
+        [attr.min]="filters.from || null"
+        [ngModel]="filters.to"
+        (ngModelChange)="setFilter('to', $event)"
+      />
+    </label>
+
+    <button *ngIf="hasFilters" type="button" class="activity-log__clear" (click)="clearFilters()">
+      Clear filters
+    </button>
+  </div>
+
+  <div *ngIf="isLoading && views.length === 0" class="activity-log__loading">
+    <app-loading-spinner message="Loading page views..." layout="block"></app-loading-spinner>
+  </div>
+
+  <div *ngIf="!isLoading && views.length === 0" class="activity-log__empty">
+    <p>No page views match these filters.</p>
+  </div>
+
+  <div *ngIf="views.length > 0" class="activity-log__table-wrap" [class.activity-log__table-wrap--busy]="isLoading">
+    <table class="activity-log__table">
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">User</th>
+          <th scope="col">Page</th>
+          <th scope="col">Path</th>
+          <th scope="col"><span class="activity-log__sr-only">Details</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let view of views">
+          <tr
+            class="activity-log__row"
+            [class.activity-log__row--open]="expandedId === view.id"
+            (click)="toggleDetails(view.id)"
+          >
+            <td class="activity-log__time">{{ view.createdAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+            <td class="activity-log__user">
+              <span class="activity-log__user-id">{{ view.userId !== null ? '#' + view.userId : '—' }}</span>
+              {{ view.username ?? '—' }}
+            </td>
+            <td>{{ view.page ?? '—' }}</td>
+            <td class="activity-log__route" [title]="view.path">{{ view.path }}</td>
+            <td>
+              <!-- No handler of its own: the click reaches the row, and Enter or Space on the button is a click -->
+              <button
+                type="button"
+                class="activity-log__toggle"
+                [attr.aria-expanded]="expandedId === view.id"
+                [attr.aria-label]="'Details of page view ' + view.id"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          <tr *ngIf="expandedId === view.id" class="activity-log__details-row">
+            <td colspan="5">
+              <dl class="activity-log__details">
+                <dt>IP address</dt>
+                <dd>{{ view.ipAddress ?? '—' }}</dd>
+                <dt>Browser</dt>
+                <dd>{{ view.userAgent ?? '—' }}</dd>
+              </dl>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+  </div>
+
+  <div *ngIf="views.length > 0" class="activity-log__pager">
+    <span class="activity-log__range">Showing {{ rangeStart }}–{{ rangeEnd }} of {{ total | number }}</span>
+    <div class="activity-log__pager-buttons">
+      <button type="button" class="activity-log__page-btn" [disabled]="!hasPrevious || isLoading" (click)="previousPage()">
+        Previous
+      </button>
+      <button type="button" class="activity-log__page-btn" [disabled]="!hasNext || isLoading" (click)="nextPage()">
+        Next
+      </button>
+    </div>
+  </div>
+</div>

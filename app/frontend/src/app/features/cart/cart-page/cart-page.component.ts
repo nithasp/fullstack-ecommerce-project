@@ -190,7 +190,7 @@ export class CartPageComponent implements OnInit, OnDestroy {
   }
 
   getItemPrice(item: CartItem): number {
-    return item.selectedType?.price ?? item.product.price;
+    return item.selectedType?.price ?? Number(item.product.price);
   }
 
   getItemSubtotal(item: CartItem): number {
@@ -264,30 +264,28 @@ export class CartPageComponent implements OnInit, OnDestroy {
     }
     if (this.isCheckingOut) return;
 
-    const checkoutItems = this.selectedItems
-      .filter(item => item.cartItemId !== undefined)
-      .map(item => ({
-        productId: item.product.id,
-        quantity: item.quantity,
-      }));
+    // The server charges for the cart rows themselves, so it is sent their ids, not prices
+    const cartItemIds = this.selectedItems
+      .map(item => item.cartItemId)
+      .filter((id): id is number => id !== undefined);
 
-    if (checkoutItems.length === 0) {
+    if (cartItemIds.length === 0) {
       this.notificationService.error('Unable to process order. Please refresh and try again.');
       return;
     }
 
     this.isCheckingOut = true;
-    this.cartApi.checkout(checkoutItems).subscribe({
+    this.cartApi.checkout(cartItemIds).subscribe({
       next: () => {
-        this.cartService.clearLocalCart();
+        // Only the items that were paid for leave the cart, so the rest are read back
+        this.cartService.fetchCart();
         this.isCheckingOut = false;
         this.notificationService.success('Order placed successfully!', 'Thank You');
         this.router.navigate(['/cart/confirmation']);
       },
-      error: (err) => {
+      error: (err: Error) => {
         this.isCheckingOut = false;
-        const message = err?.error?.error || 'Checkout failed. Please try again.';
-        this.notificationService.error(message);
+        this.notificationService.error(err?.message || 'Checkout failed. Please try again.');
       },
     });
   }

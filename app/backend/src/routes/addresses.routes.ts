@@ -6,10 +6,10 @@ const router = Router();
 
 router.use(verifyAuthToken);
 
-router.get('/',       addresses.getAddresses);
-router.get('/:id',    addresses.getAddress);
-router.post('/',      addresses.createAddress);
-router.put('/:id',    addresses.updateAddress);
-router.delete('/:id', addresses.deleteAddress);
+router.get('/', addresses.index);
+router.get('/:id', addresses.show);
+router.post('/', addresses.create);
+router.patch('/:id', addresses.update);
+router.delete('/:id', addresses.destroy);
 
 export default router;

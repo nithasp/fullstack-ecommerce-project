@@ -1,11 +1,29 @@
 export const ORDER_STATUSES = ['active', 'complete'] as const;
 
-export type OrderStatus = typeof ORDER_STATUSES[number];
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export interface Order {
-  id?: number;
+  id: number;
   userId: number;
-  status: string;
+  status: OrderStatus;
+  createdAt: Date;
+  total: string;
+}
+
+export interface OrderLine {
+  id: number;
+  orderId: number;
+  productId: number;
+  typeId: string | null;
+  quantity: number;
+  unitPrice: string;
+}
+
+export interface NewOrderLine {
+  productId: number;
+  typeId?: string | null;
+  quantity: number;
+  unitPrice: number | string;
 }
 
 export interface OrderFilters {
@@ -13,20 +31,14 @@ export interface OrderFilters {
   userId?: number;
 }
 
-export interface OrderProduct {
-  id?: number;
-  orderId: number;
-  productId: number;
-  quantity: number;
-}
-
 export interface RecentPurchase {
   productId: number;
   name: string;
-  price: number;
+  price: string;
   category: string | null;
   image: string | null;
   description: string | null;
   quantity: number;
   orderId: number;
+  purchasedAt: Date;
 }

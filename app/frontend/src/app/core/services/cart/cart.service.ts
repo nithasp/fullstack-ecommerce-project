@@ -97,7 +97,7 @@ export class CartService {
       id: api.productId,
       name: api.productName ?? '',
       category: api.productCategory ?? '',
-      price: api.productPrice ?? 0,
+      price: api.productPrice ?? '0',
       image: api.productImage ?? '',
       description: api.productDescription ?? '',
       previewImg: api.productPreviewImg ?? [],
@@ -165,9 +165,6 @@ export class CartService {
         productId: product.id,
         quantity: item.quantity,
         typeId: selectedType?._id ?? null,
-        selectedType: selectedType ?? null,
-        shopId: product.shopId ?? null,
-        shopName: product.shopName ?? null,
       }).subscribe({
         next: (apiItem) => {
           item.cartItemId = apiItem.id;
@@ -212,9 +209,6 @@ export class CartService {
       productId: product.id,
       quantity,
       typeId: selectedType?._id ?? null,
-      selectedType: selectedType ?? null,
-      shopId: product.shopId ?? null,
-      shopName: product.shopName ?? null,
     }).subscribe({
       next: (apiItem) => {
         const item = this.cartItems.find(
@@ -297,14 +291,9 @@ export class CartService {
     });
   }
 
-  clearLocalCart(): void {
-    this.cartItems = [];
-    this.cartSubject.next([]);
-  }
-
   getTotal(): number {
     return this.cartItems.reduce((total, item) => {
-      const price = item.selectedType?.price ?? item.product.price;
+      const price = item.selectedType?.price ?? Number(item.product.price);
       return total + (price * item.quantity);
     }, 0);
   }

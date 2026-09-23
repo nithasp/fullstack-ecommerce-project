@@ -17,19 +17,15 @@ export const authGuard: CanActivateFn = () => {
     switchMap(() => {
       if (authService.hasValidToken()) return of(true);
 
-      if (authService.getRefreshToken()) {
-        return authService.refreshAccessToken().pipe(
-          map(() => true),
-          catchError(() => {
-            authService.clearSession();
-            router.navigate(['/auth/login']);
-            return of(false);
-          })
-        );
-      }
-
-      router.navigate(['/auth/login']);
-      return of(false);
+      // No usable access token: the refresh cookie is the only thing that can prove the session
+      return authService.refreshAccessToken().pipe(
+        map(() => true),
+        catchError(() => {
+          authService.clearSession();
+          router.navigate(['/auth/login']);
+          return of(false);
+        })
+      );
     })
   );
 };

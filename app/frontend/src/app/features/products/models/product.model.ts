@@ -21,7 +21,8 @@ export interface Product {
   id: number;
   name: string;
   category: string;
-  price: number;
+  /** NUMERIC in Postgres, so it arrives as a string such as "19.99" */
+  price: string;
   image: string;
   description: string;
   previewImg: string[];

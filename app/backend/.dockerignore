@@ -2,3 +2,9 @@ node_modules
 dist
 .env*
 *.log
+coverage
+postman
+sample-product-data
+spec
+.github
+*.md
