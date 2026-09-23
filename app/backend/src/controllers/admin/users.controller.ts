@@ -8,14 +8,15 @@ import {
 } from '../../schemas/user.schema';
 import * as userService from '../../services/user.service';
 import { asyncHandler } from '../../utils/asyncHandler';
+import { AppError } from '../../utils/errors';
 import { currentUserId } from '../../utils/request';
-import { AppError, sendPage, sendSuccess } from '../../utils/response';
+import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
 
 export const index = asyncHandler(async (req: Request, res: Response) => {
   const page = parse(paginationSchema, req.query);
   const { items, total } = await userService.listUsers(page);
-  sendPage(res, items, { ...page, total }, 'Users fetched.');
+  sendSuccess(res, items, 'Users fetched.', 200, { ...page, total });
 });
 
 export const show = asyncHandler(async (req: Request, res: Response) => {

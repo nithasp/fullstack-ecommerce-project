@@ -7,10 +7,10 @@ import pinoHttp from 'pino-http';
 import { config } from './config';
 import { logger } from './logger';
 import { recordActivity } from './middleware/audit';
+import { errorMiddleware, notFoundMiddleware } from './middleware/error';
 import { apiLimiter } from './middleware/rateLimit';
 import apiRoutes from './routes';
 import docsRoutes from './routes/docs.routes';
-import { errorMiddleware, notFoundMiddleware } from './utils/response';
 
 export const API_PREFIX = '/api/v1';
 

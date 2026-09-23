@@ -9,14 +9,14 @@ import {
 import * as orderService from '../../services/order.service';
 import { requireUser } from '../../services/user.service';
 import { asyncHandler } from '../../utils/asyncHandler';
-import { sendPage, sendSuccess } from '../../utils/response';
+import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
 
 export const index = asyncHandler(async (req: Request, res: Response) => {
   const filters = parse(orderFiltersSchema, req.query);
   const page = parse(paginationSchema, req.query);
   const { items, total } = await orderService.listOrders(filters, page);
-  sendPage(res, items, { ...page, total }, 'Orders fetched.');
+  sendSuccess(res, items, 'Orders fetched.', 200, { ...page, total });
 });
 
 export const show = asyncHandler(async (req: Request, res: Response) => {

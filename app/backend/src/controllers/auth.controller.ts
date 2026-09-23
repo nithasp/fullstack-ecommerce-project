@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { auditAs } from '../middleware/audit';
 import { loginSchema, registerSchema } from '../schemas/auth.schema';
-import { requestSource } from '../services/audit.service';
 import {
   issueSession,
   revokeAllSessions,
@@ -10,9 +9,10 @@ import {
 } from '../services/token.service';
 import * as userService from '../services/user.service';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../utils/errors';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../utils/refreshCookie';
-import { currentUserId } from '../utils/request';
-import { AppError, sendSuccess } from '../utils/response';
+import { currentUserId, requestSource } from '../utils/request';
+import { sendSuccess } from '../utils/response';
 import { parse } from '../utils/validation';
 
 export const register = asyncHandler(async (req: Request, res: Response) => {

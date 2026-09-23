@@ -1,9 +1,9 @@
-import { Request } from 'express';
 import { config } from '../config';
 import { logger } from '../logger';
 import { AuditLogRepository } from '../repositories/auditLog.repository';
-import { AuditLog, AuditLogFilters, AuditSource, NewAuditLog } from '../types/auditLog.types';
-import { Pagination } from '../types/pagination.types';
+import { AuditLog, AuditLogFilters, NewAuditLog } from '../types/auditLog.types';
+import { Page, Pagination } from '../types/pagination.types';
+import { pageOf } from '../utils/paging';
 
 const auditLogs = new AuditLogRepository();
 
@@ -22,21 +22,11 @@ export async function flushAuditLog(): Promise<void> {
   await Promise.all(pendingWrites);
 }
 
-export function requestSource(req: Request): AuditSource {
-  return {
-    method: req.method,
-    path: req.originalUrl.split('?')[0],
-    ipAddress: req.ip ?? null,
-    userAgent: req.get('user-agent') ?? null,
-  };
-}
-
-export async function listAuditLogs(
-  filters: AuditLogFilters,
-  page: Pagination,
-): Promise<{ items: AuditLog[]; total: number }> {
-  const [items, total] = await Promise.all([auditLogs.index(filters, page), auditLogs.count(filters)]);
-  return { items, total };
+export function listAuditLogs(filters: AuditLogFilters, page: Pagination): Promise<Page<AuditLog>> {
+  return pageOf(
+    () => auditLogs.index(filters, page),
+    () => auditLogs.count(filters),
+  );
 }
 
 export function purgeExpiredAuditLogs(): Promise<number> {

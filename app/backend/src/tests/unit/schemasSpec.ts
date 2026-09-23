@@ -1,7 +1,7 @@
 import { paginationSchema } from '../../schemas/common.schema';
 import { pageViewSchema } from '../../schemas/pageView.schema';
 import { newProductSchema } from '../../schemas/product.schema';
-import { AppError } from '../../utils/response';
+import { AppError } from '../../utils/errors';
 import { parse } from '../../utils/validation';
 
 function problem(schema: Parameters<typeof parse>[0], input: unknown): string {

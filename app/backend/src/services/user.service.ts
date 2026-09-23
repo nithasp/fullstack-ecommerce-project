@@ -4,10 +4,11 @@ import { CartRepository } from '../repositories/cart.repository';
 import { OrderRepository } from '../repositories/order.repository';
 import { UserRepository } from '../repositories/user.repository';
 import { AuthSession } from '../types/auth.types';
-import { Pagination } from '../types/pagination.types';
 import { RecentPurchase } from '../types/order.types';
+import { Page, Pagination } from '../types/pagination.types';
 import { NewUser, ProfileUpdate, PublicUser, UserRole } from '../types/user.types';
-import { AppError } from '../utils/response';
+import { AppError } from '../utils/errors';
+import { pageOf } from '../utils/paging';
 import { CURRENT_PASSWORD_VERSION, hashPassword, spendVerifyTime, verifyPassword } from './password.service';
 import { issueSession, revokeAllSessions } from './token.service';
 
@@ -26,13 +27,19 @@ const toPublicUser = (user: PublicUser): PublicUser => ({
   role: user.role,
 });
 
-export async function listUsers(page: Pagination): Promise<{ items: PublicUser[]; total: number }> {
-  const [items, total] = await Promise.all([users.index(page), users.count()]);
-  return { items, total };
+export function listUsers(page: Pagination): Promise<Page<PublicUser>> {
+  return pageOf(
+    () => users.index(page),
+    () => users.count(),
+  );
+}
+
+export function findUser(id: number): Promise<PublicUser | null> {
+  return users.show(id);
 }
 
 export async function requireUser(id: number): Promise<PublicUser> {
-  const user = await users.show(id);
+  const user = await findUser(id);
   if (!user) throw notFound(id);
   return user;
 }

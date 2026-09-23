@@ -1,21 +1,20 @@
 import { OrderRepository } from '../repositories/order.repository';
 import { ProductRepository } from '../repositories/product.repository';
-import { NewOrderLineInput } from '../schemas/order.schema';
-import { Order, OrderFilters, OrderLine, OrderStatus } from '../types/order.types';
-import { Pagination } from '../types/pagination.types';
-import { AppError } from '../utils/response';
+import { Order, OrderFilters, OrderLine, OrderLineRequest, OrderStatus } from '../types/order.types';
+import { Page, Pagination } from '../types/pagination.types';
+import { AppError } from '../utils/errors';
+import { pageOf } from '../utils/paging';
 
 const orders = new OrderRepository();
 const products = new ProductRepository();
 
 const notFound = (id: number) => new AppError(`order with id ${id} not found`, 404, 'not_found');
 
-export async function listOrders(
-  filters: OrderFilters,
-  page: Pagination,
-): Promise<{ items: Order[]; total: number }> {
-  const [items, total] = await Promise.all([orders.index(filters, page), orders.count(filters)]);
-  return { items, total };
+export function listOrders(filters: OrderFilters, page: Pagination): Promise<Page<Order>> {
+  return pageOf(
+    () => orders.index(filters, page),
+    () => orders.count(filters),
+  );
 }
 
 export async function getOrder(id: number): Promise<Order> {
@@ -51,22 +50,30 @@ export async function deleteOrder(id: number): Promise<Order> {
   return deleted;
 }
 
-export async function addLine(orderId: number, input: NewOrderLineInput): Promise<OrderLine> {
+export async function addLine(orderId: number, input: OrderLineRequest): Promise<OrderLine> {
   const product = await products.show(input.productId, true);
   if (!product) throw new AppError(`product with id ${input.productId} not found`, 404, 'not_found');
 
-  let unitPrice: string | number = product.price;
-  if (input.typeId) {
-    const variant = product.types.find((type) => type._id === input.typeId);
-    if (!variant)
-      throw new AppError(`product ${product.id} has no option ${input.typeId}`, 400, 'invalid_request');
-    unitPrice = variant.price;
+  if (!input.typeId) {
+    return orders.addLine(orderId, {
+      productId: product.id,
+      variantId: null,
+      typeId: null,
+      quantity: input.quantity,
+      unitPrice: product.price,
+    });
+  }
+
+  const variant = await products.findVariant(product.id, input.typeId);
+  if (!variant) {
+    throw new AppError(`product ${product.id} has no option ${input.typeId}`, 400, 'invalid_request');
   }
 
   return orders.addLine(orderId, {
-    productId: input.productId,
-    typeId: input.typeId ?? null,
+    productId: product.id,
+    variantId: variant.id,
+    typeId: variant.extId,
     quantity: input.quantity,
-    unitPrice,
+    unitPrice: variant.price.toFixed(2),
   });
 }

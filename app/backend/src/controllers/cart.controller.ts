@@ -33,7 +33,7 @@ export const clearCart = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const checkout = asyncHandler(async (req: Request, res: Response) => {
-  const { cartItemIds } = parse(checkoutSchema, req.body);
-  const result = await cartService.checkout(currentUserId(req), cartItemIds);
+  const { cartItemIds, addressId } = parse(checkoutSchema, req.body);
+  const result = await cartService.checkout(currentUserId(req), cartItemIds, addressId);
   sendSuccess(res, result, 'Checkout successful.', 201);
 });

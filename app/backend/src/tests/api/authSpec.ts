@@ -1,4 +1,12 @@
+import { createHash } from 'crypto';
+import pool from '../../database';
 import { api, API, cookieValue, refreshCookie, registerCustomer, uniqueName } from '../support/api';
+
+async function ageRotation(token: string): Promise<void> {
+  await pool.query(`UPDATE refresh_tokens SET used_at = used_at - INTERVAL '1 hour' WHERE token_hash = $1`, [
+    createHash('sha256').update(token).digest('hex'),
+  ]);
+}
 
 describe('Auth endpoints', () => {
   describe('POST /auth/register', () => {
@@ -109,7 +117,7 @@ describe('Auth endpoints', () => {
       expect(res.body.code).toBe('token_invalid');
     });
 
-    it('ends the whole session when a refresh token is presented a second time', async () => {
+    it('ends the whole session when a refresh token is presented again later', async () => {
       const customer = await registerCustomer('replayer');
 
       const first = await customer.post('/auth/refresh').expect(200);
@@ -118,6 +126,7 @@ describe('Auth endpoints', () => {
       const stolenValue = cookieValue(stolen as string);
 
       await customer.post('/auth/refresh').expect(200);
+      await ageRotation(stolenValue);
 
       await api
         .post(`${API}/auth/refresh`)
@@ -125,6 +134,33 @@ describe('Auth endpoints', () => {
         .expect(401);
 
       await customer.post('/auth/refresh').expect(401);
+    });
+
+    it('keeps the session when a second tab refreshes with the same cookie', async () => {
+      const customer = await registerCustomer('twotabs');
+
+      const opened = await customer.post('/auth/refresh').expect(200);
+      const shared = cookieValue(refreshCookie(opened) as string);
+
+      const tabOne = await api
+        .post(`${API}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${shared}`])
+        .expect(200);
+
+      const tabTwo = await api
+        .post(`${API}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${shared}`])
+        .expect(200);
+
+      expect(typeof tabTwo.body.data.accessToken).toBe('string');
+      expect(tabTwo.body.data.user.id).toBe(customer.id);
+
+      for (const response of [tabOne, tabTwo]) {
+        await api
+          .post(`${API}/auth/refresh`)
+          .set('Cookie', [`refreshToken=${cookieValue(refreshCookie(response) as string)}`])
+          .expect(200);
+      }
     });
   });
 

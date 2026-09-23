@@ -41,10 +41,11 @@ export class CartApiService {
       .pipe(map(res => res.data));
   }
 
-  // The server charges for the cart rows themselves, at the price and stock it holds for them
-  checkout(cartItemIds: number[]): Observable<CheckoutResponse> {
+  // The server charges for the cart rows themselves, at the price and stock it holds for them,
+  // and copies the chosen address onto the order
+  checkout(cartItemIds: number[], addressId: number): Observable<CheckoutResponse> {
     return this.http
-      .post<ApiResponse<CheckoutResponse>>(`${this.baseUrl}/checkout`, { cartItemIds })
+      .post<ApiResponse<CheckoutResponse>>(`${this.baseUrl}/checkout`, { cartItemIds, addressId })
       .pipe(map(res => res.data));
   }
 }

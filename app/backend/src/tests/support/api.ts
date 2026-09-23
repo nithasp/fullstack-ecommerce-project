@@ -3,7 +3,7 @@ import app from '../../app';
 import { UserRepository } from '../../repositories/user.repository';
 import { CURRENT_PASSWORD_VERSION, hashPassword } from '../../services/password.service';
 import { Product } from '../../types/product.types';
-import { TestAgent, TestClient, TestUser } from '../../types/test.types';
+import { TestAgent, TestBuyer, TestClient, TestUser } from '../../types/test.types';
 
 export const API = '/api/v1';
 
@@ -49,6 +49,14 @@ export async function registerCustomer(prefix = 'customer'): Promise<TestUser> {
   const password = 'customerpass123';
   const res = await agent.post(`${API}/auth/register`).send({ username, password }).expect(201);
   return testUser(res.body.data.user.id, username, password, res.body.data.accessToken, agent);
+}
+
+export async function registerBuyer(prefix = 'buyer'): Promise<TestBuyer> {
+  const customer = await registerCustomer(prefix);
+  const res = await customer
+    .post('/addresses', { fullName: 'Test Buyer', address: '1 Test Street', city: 'Testville' })
+    .expect(201);
+  return Object.assign(customer, { addressId: res.body.data.id as number });
 }
 
 export async function createAdmin(prefix = 'admin'): Promise<TestUser> {

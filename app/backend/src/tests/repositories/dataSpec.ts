@@ -103,9 +103,8 @@ describe('Repositories', () => {
       for (let i = 0; i < 3; i++) {
         await carts.upsert(
           customer.id,
-          { productId: product.id, quantity: 900, typeId: null },
+          { productId: product.id, quantity: 900, variantId: null },
           { shopId: null, shopName: null },
-          null,
         );
       }
 

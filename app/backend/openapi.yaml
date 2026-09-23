@@ -859,7 +859,8 @@ paths:
         twice adds up the quantities (capped at 999).
 
         The option, its price and the shop are read from the product; a price or option sent
-        in the body is ignored. A product that does not exist or is archived answers `400`.
+        in the body is ignored. A product that does not exist or is archived answers `400`,
+        and so does leaving `typeId` out for a product that has options.
       operationId: addCartItem
       requestBody:
         required: true
@@ -917,8 +918,13 @@ paths:
         - the quantity comes from the cart row, never from the request;
         - the price comes from the product, or from the chosen option, and is stored on the
           order line;
-        - stock is checked and reduced, for the product and for the option;
+        - stock is checked and reduced on whichever row holds it: the option when one was
+          chosen, otherwise the product;
         - the rows that were paid for leave the cart, and the rest stay.
+
+        `addressId` must be one of the caller's own addresses; any other id answers `404`.
+        It is copied onto the order, so editing or deleting that address later does not
+        change where the order says it was sent.
 
         Anything that no longer adds up stops the whole checkout with `409` and changes
         nothing: an archived product, an option that is gone, or too little stock.
@@ -929,7 +935,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [cartItemIds]
+              required: [cartItemIds, addressId]
               properties:
                 cartItemIds:
                   type: array
@@ -937,6 +943,11 @@ paths:
                   maxItems: 100
                   items: { type: integer, minimum: 1 }
                   example: [12, 13]
+                addressId:
+                  type: integer
+                  minimum: 1
+                  description: One of the caller's own addresses, to ship the order to.
+                  example: 3
       responses:
         '201':
           description: The order and its lines.
@@ -2700,7 +2711,6 @@ components:
         _id: { type: string, example: 69999b5d6decb17b3853fc1d }
         productId: { type: integer, example: 5002 }
         color: { type: string, example: Rose Gold }
-        quantity: { type: integer, example: 40 }
         price: { type: number, format: float, example: 139.99 }
         stock: { type: integer, example: 40 }
         image: { type: string }
@@ -2734,7 +2744,13 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Review' }
         overallRating: { type: number, minimum: 0, maximum: 5, example: 4.7 }
-        stock: { type: integer, minimum: 0, example: 145 }
+        stock:
+          type: integer
+          minimum: 0
+          description: >-
+            For a product with options this is their stock added up; otherwise it is the
+            product's own stock.
+          example: 145
         isActive:
           type: boolean
           description: '`false` means archived: it is off sale and hidden from `/products`.'
@@ -2795,6 +2811,25 @@ components:
           allOf: [{ $ref: '#/components/schemas/Money' }]
           description: The sum of its lines, at the prices charged.
           example: '279.98'
+        addressId:
+          type: integer
+          nullable: true
+          description: The address it was shipped to, or null once that address is deleted.
+          example: 3
+        shippingAddress:
+          allOf: [{ $ref: '#/components/schemas/ShippingAddress' }]
+          nullable: true
+          description: Copied onto the order when it was placed, so it never changes afterwards.
+
+    ShippingAddress:
+      type: object
+      description: Where an order was sent, as it read at the moment of checkout.
+      properties:
+        fullName: { type: string, example: Jane Doe }
+        phone: { type: string, nullable: true, example: '+44 20 7946 0958' }
+        address: { type: string, example: 12 Market Street }
+        city: { type: string, example: Manchester }
+        label: { $ref: '#/components/schemas/AddressLabel' }
 
     OrderLine:
       type: object
@@ -2802,10 +2837,15 @@ components:
         id: { type: integer, example: 11 }
         orderId: { type: integer, example: 7 }
         productId: { type: integer, example: 1 }
+        variantId:
+          type: integer
+          nullable: true
+          description: The option row that was bought, or null once that option is retired.
+          example: 42
         typeId:
           type: string
           nullable: true
-          description: The option that was bought, if any.
+          description: The name of the option that was bought, kept even if it is retired later.
           example: 69999b5d6decb17b3853fc1d
         quantity: { type: integer, example: 2 }
         unitPrice:

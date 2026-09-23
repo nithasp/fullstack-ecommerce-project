@@ -1,10 +1,13 @@
 import { z } from 'zod';
+import { MAX_CART_QUANTITY } from '../types/cart.types';
 import { ORDER_STATUSES } from '../types/order.types';
-import { nullableText, positiveInt } from './common.schema';
+import { nullableText, positiveInt, wholeNumber } from './common.schema';
 
 export const orderStatusSchema = z.enum(ORDER_STATUSES, {
   error: `must be one of: ${ORDER_STATUSES.join(', ')}`,
 });
+
+export const customerOrderFiltersSchema = z.object({ status: orderStatusSchema.optional() });
 
 export const orderFiltersSchema = z.object({
   status: orderStatusSchema.optional(),
@@ -20,14 +23,7 @@ export const orderStatusUpdateSchema = z.object({ status: orderStatusSchema });
 
 export const newOrderLineSchema = z.object({
   productId: positiveInt,
-  quantity: z.preprocess(
-    (value) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : value),
-    z
-      .number('must be a whole number between 1 and 999')
-      .int('must be a whole number between 1 and 999')
-      .min(1, 'must be a whole number between 1 and 999')
-      .max(999, 'must be a whole number between 1 and 999'),
-  ),
+  quantity: wholeNumber(1, MAX_CART_QUANTITY),
   typeId: nullableText(255).optional(),
 });
 

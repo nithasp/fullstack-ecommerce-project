@@ -1,6 +1,8 @@
 import { Order, OrderLine } from './order.types';
 import { ProductType, Review } from './product.types';
 
+export const MAX_CART_QUANTITY = 999;
+
 export interface CartItem {
   id: number;
   userId: number;
@@ -27,16 +29,22 @@ export interface CartItem {
   productShopName: string | null;
 }
 
+export interface AddCartItem {
+  productId: number;
+  quantity: number;
+  typeId?: string | null;
+}
+
 export interface UpsertCartItem {
   productId: number;
   quantity: number;
-  typeId: string | null;
+  variantId: number | null;
 }
 
 export interface CheckoutLine {
   id: number;
   productId: number;
-  typeId: string;
+  variantId: number | null;
   quantity: number;
 }
 

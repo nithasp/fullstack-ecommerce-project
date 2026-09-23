@@ -3,14 +3,14 @@ import { idParams, paginationSchema } from '../schemas/common.schema';
 import { productFiltersSchema } from '../schemas/product.schema';
 import * as productService from '../services/product.service';
 import { asyncHandler } from '../utils/asyncHandler';
-import { sendPage, sendSuccess } from '../utils/response';
+import { sendSuccess } from '../utils/response';
 import { parse } from '../utils/validation';
 
 export const index = asyncHandler(async (req: Request, res: Response) => {
   const filters = parse(productFiltersSchema, req.query);
   const page = parse(paginationSchema, req.query);
   const { items, total } = await productService.listCatalog(filters, page);
-  sendPage(res, items, { ...page, total }, 'Products fetched.');
+  sendSuccess(res, items, 'Products fetched.', 200, { ...page, total });
 });
 
 export const categories = asyncHandler(async (_req: Request, res: Response) => {

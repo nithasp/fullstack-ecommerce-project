@@ -1,13 +1,12 @@
 import pool from '../database';
+import { Queryable } from '../types/database.types';
 import { NewPageView, PageView, PageViewFilters } from '../types/pageView.types';
 import { Pagination } from '../types/pagination.types';
-
-const clip = (value: string | null | undefined, max: number): string | null =>
-  value ? value.slice(0, max) : null;
+import { clip } from '../utils/text';
 
 export class PageViewRepository {
-  async create(view: NewPageView): Promise<void> {
-    await pool.query(
+  async create(view: NewPageView, db: Queryable = pool): Promise<void> {
+    await db.query(
       `INSERT INTO page_views (user_id, username, path, page, ip_address, user_agent)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
@@ -21,23 +20,23 @@ export class PageViewRepository {
     );
   }
 
-  async index(filters: PageViewFilters, page: Pagination): Promise<PageView[]> {
+  async index(filters: PageViewFilters, page: Pagination, db: Queryable = pool): Promise<PageView[]> {
     const params: unknown[] = [];
     const sql = `SELECT * FROM page_views${where(filters, params)}
                  ORDER BY created_at DESC, id DESC
                  LIMIT $${params.push(page.limit)} OFFSET $${params.push(page.offset)}`;
-    const { rows } = await pool.query(sql, params);
+    const { rows } = await db.query(sql, params);
     return rows.map(toPageView);
   }
 
-  async count(filters: PageViewFilters): Promise<number> {
+  async count(filters: PageViewFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
-    const { rows } = await pool.query(`SELECT COUNT(*) FROM page_views${where(filters, params)}`, params);
+    const { rows } = await db.query(`SELECT COUNT(*) FROM page_views${where(filters, params)}`, params);
     return Number(rows[0].count);
   }
 
-  async deleteOlderThan(days: number): Promise<number> {
-    const { rowCount } = await pool.query(
+  async deleteOlderThan(days: number, db: Queryable = pool): Promise<number> {
+    const { rowCount } = await db.query(
       `DELETE FROM page_views WHERE created_at < NOW() - $1::int * INTERVAL '1 day'`,
       [days],
     );

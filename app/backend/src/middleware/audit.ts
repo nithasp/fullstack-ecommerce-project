@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { recordEvent, requestSource } from '../services/audit.service';
+import { recordEvent } from '../services/audit.service';
 import {
   AuditAction,
   AuditAnnotation,
@@ -8,6 +8,7 @@ import {
   AuditRule,
   NewAuditLog,
 } from '../types/auditLog.types';
+import { requestSource } from '../utils/request';
 
 const METHOD_ACTIONS: Record<string, AuditAction> = {
   GET: 'READ',

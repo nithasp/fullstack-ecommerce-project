@@ -1,20 +1,17 @@
 import { Request, Response } from 'express';
-import { z } from 'zod';
 import { addressUpdateSchema, adminNewAddressSchema } from '../../schemas/address.schema';
-import { idParams, paginationSchema, positiveInt } from '../../schemas/common.schema';
+import { idParams, paginationSchema, userIdFilterSchema } from '../../schemas/common.schema';
 import * as addressService from '../../services/address.service';
 import { requireUser } from '../../services/user.service';
 import { asyncHandler } from '../../utils/asyncHandler';
-import { sendPage, sendSuccess } from '../../utils/response';
+import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
 
-const userIdFilter = z.object({ userId: positiveInt.optional() });
-
 export const index = asyncHandler(async (req: Request, res: Response) => {
-  const filters = parse(userIdFilter, req.query);
+  const filters = parse(userIdFilterSchema, req.query);
   const page = parse(paginationSchema, req.query);
   const { items, total } = await addressService.listAll(filters, page);
-  sendPage(res, items, { ...page, total }, 'Addresses fetched.');
+  sendSuccess(res, items, 'Addresses fetched.', 200, { ...page, total });
 });
 
 export const show = asyncHandler(async (req: Request, res: Response) => {

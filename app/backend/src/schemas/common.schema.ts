@@ -7,8 +7,13 @@ export const MAX_QUERY_STRING_LENGTH = 100;
 
 const WHOLE_NUMBER = 'must be a whole number greater than 0';
 
-const asNumber = (value: unknown): unknown =>
+export const asNumber = (value: unknown): unknown =>
   typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+
+export const wholeNumber = (min: number, max: number) => {
+  const message = `must be a whole number between ${min} and ${max}`;
+  return z.preprocess(asNumber, z.number(message).int(message).min(min, message).max(max, message));
+};
 
 export const positiveInt = z.preprocess(
   asNumber,
@@ -51,18 +56,13 @@ export const password = z
 
 export const idParams = z.object({ id: positiveInt });
 
+export const userIdParams = z.object({ userId: positiveInt });
+
+export const userIdFilterSchema = z.object({ userId: positiveInt.optional() });
+
 // Bounded page size so a single list request can't pull the whole table (OWASP API4)
 export const paginationSchema = z.object({
-  limit: z
-    .preprocess(
-      asNumber,
-      z
-        .number(`must be a whole number between 1 and ${PAGINATION_MAX_LIMIT}`)
-        .int(`must be a whole number between 1 and ${PAGINATION_MAX_LIMIT}`)
-        .min(1, `must be a whole number between 1 and ${PAGINATION_MAX_LIMIT}`)
-        .max(PAGINATION_MAX_LIMIT, `must be a whole number between 1 and ${PAGINATION_MAX_LIMIT}`),
-    )
-    .default(PAGINATION_DEFAULT_LIMIT),
+  limit: wholeNumber(1, PAGINATION_MAX_LIMIT).default(PAGINATION_DEFAULT_LIMIT),
   offset: nonNegativeInt.default(0),
 });
 

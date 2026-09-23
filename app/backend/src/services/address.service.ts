@@ -1,9 +1,9 @@
 import { withTransaction } from '../database';
 import { AddressRepository } from '../repositories/address.repository';
-import { AddressUpdateInput, NewAddressInput } from '../schemas/address.schema';
-import { Address } from '../types/address.types';
-import { Pagination } from '../types/pagination.types';
-import { AppError } from '../utils/response';
+import { Address, AddressUpdate, NewAddress } from '../types/address.types';
+import { Page, Pagination } from '../types/pagination.types';
+import { AppError } from '../utils/errors';
+import { pageOf } from '../utils/paging';
 
 const addresses = new AddressRepository();
 
@@ -19,12 +19,11 @@ export async function getForUser(id: number, userId: number): Promise<Address> {
   return address;
 }
 
-export async function listAll(
-  filters: { userId?: number },
-  page: Pagination,
-): Promise<{ items: Address[]; total: number }> {
-  const [items, total] = await Promise.all([addresses.listAll(filters, page), addresses.count(filters)]);
-  return { items, total };
+export function listAll(filters: { userId?: number }, page: Pagination): Promise<Page<Address>> {
+  return pageOf(
+    () => addresses.listAll(filters, page),
+    () => addresses.count(filters),
+  );
 }
 
 export async function getById(id: number): Promise<Address> {
@@ -33,7 +32,7 @@ export async function getById(id: number): Promise<Address> {
   return address;
 }
 
-export function createForUser(userId: number, form: NewAddressInput): Promise<Address> {
+export function createForUser(userId: number, form: NewAddress): Promise<Address> {
   return withTransaction(async (tx) => {
     const existing = await addresses.countForUser(userId, tx);
     const isDefault = form.isDefault || existing === 0;
@@ -42,7 +41,7 @@ export function createForUser(userId: number, form: NewAddressInput): Promise<Ad
   });
 }
 
-export function updateForUser(id: number, userId: number, changes: AddressUpdateInput): Promise<Address> {
+export function updateForUser(id: number, userId: number, changes: AddressUpdate): Promise<Address> {
   return withTransaction(async (tx) => {
     const existing = await addresses.findForUser(id, userId, tx);
     if (!existing) throw notFound(id);
@@ -50,7 +49,7 @@ export function updateForUser(id: number, userId: number, changes: AddressUpdate
   });
 }
 
-export function updateById(id: number, changes: AddressUpdateInput): Promise<Address> {
+export function updateById(id: number, changes: AddressUpdate): Promise<Address> {
   return withTransaction(async (tx) => {
     const existing = await addresses.findById(id, tx);
     if (!existing) throw notFound(id);
@@ -76,7 +75,7 @@ export function deleteById(id: number): Promise<Address> {
 
 type Tx = Parameters<Parameters<typeof withTransaction>[0]>[0];
 
-async function applyUpdate(existing: Address, changes: AddressUpdateInput, tx: Tx): Promise<Address> {
+async function applyUpdate(existing: Address, changes: AddressUpdate, tx: Tx): Promise<Address> {
   if (changes.isDefault === true) await addresses.clearDefault(existing.userId, tx);
 
   const updated = await addresses.update(existing.id, changes, tx);

@@ -1,16 +1,18 @@
 import { ProductRepository } from '../repositories/product.repository';
-import { NewProductInput, ProductUpdateInput } from '../schemas/product.schema';
-import { Pagination } from '../types/pagination.types';
-import { Product, ProductFilters } from '../types/product.types';
-import { AppError } from '../utils/response';
+import { Page, Pagination } from '../types/pagination.types';
+import { NewProduct, Product, ProductFilters, ProductUpdate } from '../types/product.types';
+import { AppError } from '../utils/errors';
+import { pageOf } from '../utils/paging';
 
 const products = new ProductRepository();
 
 const notFound = (id: number) => new AppError(`product with id ${id} not found`, 404, 'not_found');
 
-async function list(filters: ProductFilters, page: Pagination): Promise<{ items: Product[]; total: number }> {
-  const [items, total] = await Promise.all([products.index(filters, page), products.count(filters)]);
-  return { items, total };
+function list(filters: ProductFilters, page: Pagination): Promise<Page<Product>> {
+  return pageOf(
+    () => products.index(filters, page),
+    () => products.count(filters),
+  );
 }
 
 export function listCatalog(filters: ProductFilters, page: Pagination) {
@@ -41,15 +43,15 @@ export function listMostPopular(): Promise<Product[]> {
   return products.mostPopular();
 }
 
-export function createProduct(input: NewProductInput): Promise<Product> {
+export function createProduct(input: NewProduct): Promise<Product> {
   return products.create(input);
 }
 
-export function createProducts(inputs: NewProductInput[]): Promise<Product[]> {
+export function createProducts(inputs: NewProduct[]): Promise<Product[]> {
   return products.createMany(inputs);
 }
 
-export async function updateProduct(id: number, changes: ProductUpdateInput): Promise<Product> {
+export async function updateProduct(id: number, changes: ProductUpdate): Promise<Product> {
   const updated = await products.update(id, changes);
   if (!updated) throw notFound(id);
   return updated;

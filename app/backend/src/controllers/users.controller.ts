@@ -3,9 +3,10 @@ import { idParams } from '../schemas/common.schema';
 import { changePasswordSchema, profileUpdateSchema } from '../schemas/user.schema';
 import * as userService from '../services/user.service';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../utils/errors';
 import { setRefreshCookie } from '../utils/refreshCookie';
 import { currentUserId } from '../utils/request';
-import { AppError, sendSuccess } from '../utils/response';
+import { sendSuccess } from '../utils/response';
 import { parse } from '../utils/validation';
 
 // These routes only ever serve the account the token belongs to; an admin manages other accounts

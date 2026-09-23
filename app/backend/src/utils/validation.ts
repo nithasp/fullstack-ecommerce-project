@@ -1,5 +1,5 @@
 import { ZodError, ZodType } from 'zod';
-import { AppError } from './response';
+import { AppError } from './errors';
 
 function formatPath(path: readonly PropertyKey[]): string {
   return path.reduce<string>((acc, segment) => {

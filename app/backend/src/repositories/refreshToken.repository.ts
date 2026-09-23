@@ -30,46 +30,46 @@ export class RefreshTokenRepository {
        RETURNING *`,
       [hashToken(token)],
     );
-    return rows[0] ? this.mapRow(rows[0]) : null;
+    return rows[0] ? toRefreshToken(rows[0]) : null;
   }
 
-  async findUsed(token: string): Promise<StoredRefreshToken | null> {
-    const { rows } = await pool.query(
+  async findUsed(token: string, db: Queryable = pool): Promise<StoredRefreshToken | null> {
+    const { rows } = await db.query(
       'SELECT * FROM refresh_tokens WHERE token_hash = $1 AND used_at IS NOT NULL',
       [hashToken(token)],
     );
-    return rows[0] ? this.mapRow(rows[0]) : null;
+    return rows[0] ? toRefreshToken(rows[0]) : null;
   }
 
-  async deleteFamily(familyId: string): Promise<void> {
-    await pool.query('DELETE FROM refresh_tokens WHERE family_id = $1', [familyId]);
+  async deleteFamily(familyId: string, db: Queryable = pool): Promise<void> {
+    await db.query('DELETE FROM refresh_tokens WHERE family_id = $1', [familyId]);
   }
 
-  async deleteFamilyOf(token: string): Promise<number | null> {
-    const { rows } = await pool.query(
+  async deleteFamilyOf(token: string, db: Queryable = pool): Promise<number | null> {
+    const { rows } = await db.query(
       'DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1) RETURNING user_id',
       [hashToken(token)],
     );
     return rows[0] ? (rows[0].user_id as number) : null;
   }
 
-  async deleteAllForUser(userId: number): Promise<void> {
-    await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+  async deleteAllForUser(userId: number, db: Queryable = pool): Promise<void> {
+    await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
   }
 
   // Used tokens are kept until they expire so a replay can still be recognised; this clears them out
-  async deleteExpired(): Promise<void> {
-    await pool.query('DELETE FROM refresh_tokens WHERE expires_at <= NOW()');
+  async deleteExpired(db: Queryable = pool): Promise<void> {
+    await db.query('DELETE FROM refresh_tokens WHERE expires_at <= NOW()');
   }
+}
 
-  private mapRow(row: Record<string, unknown>): StoredRefreshToken {
-    return {
-      id: row.id as number,
-      userId: row.user_id as number,
-      familyId: row.family_id as string,
-      expiresAt: row.expires_at as Date,
-      usedAt: (row.used_at as Date | null) ?? null,
-      createdAt: row.created_at as Date,
-    };
-  }
+function toRefreshToken(row: Record<string, unknown>): StoredRefreshToken {
+  return {
+    id: row.id as number,
+    userId: row.user_id as number,
+    familyId: row.family_id as string,
+    expiresAt: row.expires_at as Date,
+    usedAt: (row.used_at as Date | null) ?? null,
+    createdAt: row.created_at as Date,
+  };
 }

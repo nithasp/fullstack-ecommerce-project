@@ -1,8 +1,16 @@
 import { z } from 'zod';
-import { money, nonNegativeInt, nullableText, optionalText, requiredText, searchText } from './common.schema';
+import {
+  asNumber,
+  money,
+  nonNegativeInt,
+  nullableText,
+  optionalText,
+  requiredText,
+  searchText,
+} from './common.schema';
 
 const rating = z.preprocess(
-  (value) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : value),
+  asNumber,
   z
     .number('must be a number between 0 and 5')
     .min(0, 'must be between 0 and 5')

@@ -1,12 +1,14 @@
-import { createAdmin, createProduct, registerCustomer } from '../support/api';
+import { createAdmin, createProduct, registerBuyer } from '../support/api';
 
 async function placeOrder(
-  customer: Awaited<ReturnType<typeof registerCustomer>>,
+  customer: Awaited<ReturnType<typeof registerBuyer>>,
   productId: number,
   quantity = 1,
 ) {
   const added = await customer.post('/cart', { productId, quantity }).expect(201);
-  const res = await customer.post('/cart/checkout', { cartItemIds: [added.body.data.id] }).expect(201);
+  const res = await customer
+    .post('/cart/checkout', { cartItemIds: [added.body.data.id], addressId: customer.addressId })
+    .expect(201);
   return res.body.data.order as { id: number; total: string; createdAt: string; status: string };
 }
 
@@ -14,8 +16,8 @@ describe('Order endpoints', () => {
   it('lists only the orders of the customer asking', async () => {
     const admin = await createAdmin('orderadmin');
     const product = await createProduct(admin, { price: 8, stock: 10 });
-    const customer = await registerCustomer('ordercustomer');
-    const other = await registerCustomer('orderother');
+    const customer = await registerBuyer('ordercustomer');
+    const other = await registerBuyer('orderother');
 
     await placeOrder(customer, product.id, 2);
     await placeOrder(other, product.id, 1);
@@ -29,7 +31,7 @@ describe('Order endpoints', () => {
   it('stamps the order with the time it was placed', async () => {
     const admin = await createAdmin('timeadmin');
     const product = await createProduct(admin, { stock: 5 });
-    const customer = await registerCustomer('timecustomer');
+    const customer = await registerBuyer('timecustomer');
 
     const order = await placeOrder(customer, product.id);
     const placedAt = new Date(order.createdAt).getTime();
@@ -40,8 +42,8 @@ describe('Order endpoints', () => {
   it('answers 404 for an order that belongs to someone else', async () => {
     const admin = await createAdmin('privateadmin');
     const product = await createProduct(admin, { stock: 5 });
-    const owner = await registerCustomer('orderowner');
-    const stranger = await registerCustomer('orderstranger');
+    const owner = await registerBuyer('orderowner');
+    const stranger = await registerBuyer('orderstranger');
 
     const order = await placeOrder(owner, product.id);
 
@@ -52,7 +54,7 @@ describe('Order endpoints', () => {
   it('returns the lines of an order with the price paid', async () => {
     const admin = await createAdmin('lineadmin');
     const product = await createProduct(admin, { price: 12.5, stock: 5 });
-    const customer = await registerCustomer('linecustomer');
+    const customer = await registerBuyer('linecustomer');
 
     const order = await placeOrder(customer, product.id, 2);
     const res = await customer.get(`/orders/${order.id}/products`).expect(200);
@@ -65,7 +67,7 @@ describe('Order endpoints', () => {
   it('filters by status', async () => {
     const admin = await createAdmin('statusadmin');
     const product = await createProduct(admin, { stock: 5 });
-    const customer = await registerCustomer('statuscustomer');
+    const customer = await registerBuyer('statuscustomer');
     await placeOrder(customer, product.id);
 
     expect((await customer.get('/orders?status=complete').expect(200)).body.meta.total).toBe(1);
@@ -78,7 +80,7 @@ describe('Order endpoints', () => {
   it('has no customer routes that write to an order', async () => {
     const admin = await createAdmin('readonlyadmin');
     const product = await createProduct(admin, { stock: 5 });
-    const customer = await registerCustomer('readonlycustomer');
+    const customer = await registerBuyer('readonlycustomer');
     const order = await placeOrder(customer, product.id);
 
     await customer.post('/orders', { userId: customer.id, status: 'complete' }).expect(404);
@@ -92,7 +94,7 @@ describe('Order endpoints', () => {
     const admin = await createAdmin('popularadmin');
     const quiet = await createProduct(admin, { stock: 100 });
     const loud = await createProduct(admin, { stock: 100 });
-    const customer = await registerCustomer('popularcustomer');
+    const customer = await registerBuyer('popularcustomer');
 
     const active = await admin.post('/admin/orders', { userId: customer.id, status: 'active' }).expect(201);
     await admin

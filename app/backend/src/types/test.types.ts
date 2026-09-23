@@ -1,23 +1,5 @@
 import supertest from 'supertest';
 
-export type TestRequest = ReturnType<typeof supertest>;
-
-export interface TestAdmin {
-  userId: number;
-  username: string;
-  password: string;
-  token: string;
-  refreshToken: string;
-}
-
-export interface TestCustomer {
-  userId: number;
-  username: string;
-  password: string;
-  token: string;
-  refreshToken: string;
-}
-
 export type TestAgent = ReturnType<typeof supertest.agent>;
 
 export interface TestClient {
@@ -34,6 +16,10 @@ export interface TestUser extends TestClient {
   password: string;
   token: string;
   agent: TestAgent;
+}
+
+export interface TestBuyer extends TestUser {
+  addressId: number;
 }
 
 export interface AuditRow {

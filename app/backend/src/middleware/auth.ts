@@ -1,9 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
-import { UserRepository } from '../repositories/user.repository';
 import { verifyAccessToken } from '../services/token.service';
+import { findUser } from '../services/user.service';
 import { sendError } from '../utils/response';
-
-const users = new UserRepository();
 
 export const verifyAuthToken = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
@@ -41,7 +39,7 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const user = await users.show(req.user.userId);
+    const user = await findUser(req.user.userId);
     if (!user) {
       sendError(res, 401, 'Invalid token.', 'token_invalid');
       return;

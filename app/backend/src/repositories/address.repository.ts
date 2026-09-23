@@ -1,7 +1,6 @@
 import pool from '../database';
-import { Address, AddressLabel } from '../types/address.types';
+import { Address, AddressLabel, AddressUpdate, NewAddress } from '../types/address.types';
 import { Queryable } from '../types/database.types';
-import { AddressUpdateInput, NewAddressInput } from '../schemas/address.schema';
 import { Pagination } from '../types/pagination.types';
 
 export class AddressRepository {
@@ -13,18 +12,18 @@ export class AddressRepository {
     return rows.map(toAddress);
   }
 
-  async listAll(filters: { userId?: number }, page: Pagination): Promise<Address[]> {
+  async listAll(filters: { userId?: number }, page: Pagination, db: Queryable = pool): Promise<Address[]> {
     const params: unknown[] = [];
     const sql = `SELECT * FROM addresses${where(filters, params)}
                  ORDER BY user_id ASC, is_default DESC, created_at ASC
                  LIMIT $${params.push(page.limit)} OFFSET $${params.push(page.offset)}`;
-    const { rows } = await pool.query(sql, params);
+    const { rows } = await db.query(sql, params);
     return rows.map(toAddress);
   }
 
-  async count(filters: { userId?: number }): Promise<number> {
+  async count(filters: { userId?: number }, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
-    const { rows } = await pool.query(`SELECT COUNT(*) FROM addresses${where(filters, params)}`, params);
+    const { rows } = await db.query(`SELECT COUNT(*) FROM addresses${where(filters, params)}`, params);
     return Number(rows[0].count);
   }
 
@@ -43,12 +42,7 @@ export class AddressRepository {
     return Number(rows[0].count);
   }
 
-  async create(
-    userId: number,
-    form: NewAddressInput,
-    isDefault: boolean,
-    db: Queryable = pool,
-  ): Promise<Address> {
+  async create(userId: number, form: NewAddress, isDefault: boolean, db: Queryable = pool): Promise<Address> {
     const { rows } = await db.query(
       `INSERT INTO addresses (user_id, full_name, phone, address, city, label, is_default)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -57,7 +51,7 @@ export class AddressRepository {
     return toAddress(rows[0]);
   }
 
-  async update(id: number, changes: AddressUpdateInput, db: Queryable = pool): Promise<Address | null> {
+  async update(id: number, changes: AddressUpdate, db: Queryable = pool): Promise<Address | null> {
     const fields: string[] = [];
     const values: unknown[] = [];
     const set = (column: string, value: unknown) => fields.push(`${column} = $${values.push(value)}`);

@@ -1,21 +1,17 @@
 import { Request, Response } from 'express';
-import { z } from 'zod';
 import { addCartItemSchema, cartQuantitySchema } from '../../schemas/cart.schema';
-import { idParams, paginationSchema, positiveInt } from '../../schemas/common.schema';
+import { idParams, paginationSchema, userIdFilterSchema, userIdParams } from '../../schemas/common.schema';
 import * as cartService from '../../services/cart.service';
 import { requireUser } from '../../services/user.service';
 import { asyncHandler } from '../../utils/asyncHandler';
-import { sendPage, sendSuccess } from '../../utils/response';
+import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
 
-const userIdParams = z.object({ userId: positiveInt });
-const userIdFilter = z.object({ userId: positiveInt.optional() });
-
 export const index = asyncHandler(async (req: Request, res: Response) => {
-  const filters = parse(userIdFilter, req.query);
+  const filters = parse(userIdFilterSchema, req.query);
   const page = parse(paginationSchema, req.query);
   const { items, total } = await cartService.listAllCartItems(filters, page);
-  sendPage(res, items, { ...page, total }, 'Cart items fetched.');
+  sendSuccess(res, items, 'Cart items fetched.', 200, { ...page, total });
 });
 
 export const showUserCart = asyncHandler(async (req: Request, res: Response) => {

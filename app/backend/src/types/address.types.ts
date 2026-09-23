@@ -14,3 +14,14 @@ export interface Address {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface NewAddress {
+  fullName: string;
+  phone?: string | null;
+  address: string;
+  city: string;
+  label: AddressLabel;
+  isDefault: boolean;
+}
+
+export type AddressUpdate = Partial<NewAddress>;

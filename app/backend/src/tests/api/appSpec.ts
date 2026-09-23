@@ -25,6 +25,17 @@ describe('App', () => {
     expect(res.headers['x-request-id']).toBeDefined();
   });
 
+  it('serves the API reference and the files it loads', async () => {
+    await api.get('/docs').expect(200);
+
+    const theme = await api.get('/docs/theme.css').expect(200);
+    expect(theme.headers['content-type']).toContain('text/css');
+    expect(theme.text).toContain('.swagger-ui');
+
+    await api.get('/docs/init.js').expect(200);
+    expect((await api.get('/openapi.yaml').expect(200)).text).toContain('openapi:');
+  });
+
   it('rejects a body that is not valid JSON', async () => {
     const res = await api
       .post(`${API}/auth/login`)
