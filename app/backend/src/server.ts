@@ -58,3 +58,13 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     });
   });
 }
+
+function crash(err: unknown, reason: string): void {
+  logger.fatal({ err }, reason);
+  shutdown(reason)
+    .catch((shutdownErr: unknown) => logger.error({ err: shutdownErr }, 'shutdown after crash failed'))
+    .finally(() => process.exit(1));
+}
+
+process.on('uncaughtException', (err) => crash(err, 'uncaught exception'));
+process.on('unhandledRejection', (err) => crash(err, 'unhandled rejection'));

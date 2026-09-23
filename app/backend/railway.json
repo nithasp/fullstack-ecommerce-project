@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "node dist/server.js",
+    "startCommand": "node --enable-source-maps dist/server.js",
     "preDeployCommand": ["npm run migrate:prod"],
     "restartPolicyType": "ON_FAILURE"
   }

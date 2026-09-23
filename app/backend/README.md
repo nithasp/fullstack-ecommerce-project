@@ -231,6 +231,7 @@ and `TRUST_PROXY`.
 | `npm run build` | Compile TypeScript into `dist/` (sources only, no tests) |
 | `npm start` | Run the compiled server |
 | `npm test` | Reset the test database, then run the suite |
+| `npm run test:coverage` | The same suite under `c8`, with a coverage report in `coverage/` |
 | `npm run typecheck` | Type-check everything, including the tests |
 | `npm run lint` / `lint:fix` | ESLint |
 | `npm run format` / `format:check` | Prettier |
@@ -250,3 +251,4 @@ running `npm run watch` survives it.
 | [SECURITY.md](SECURITY.md) | How the API maps to the OWASP API Top 10 |
 | [DOCKER_GUIDE.md](DOCKER_GUIDE.md) | Running the stack in Docker |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | Endpoints and database schema |
+| [../../docs/](../../docs/) | Point-in-time backend reviews |

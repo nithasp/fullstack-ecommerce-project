@@ -94,11 +94,12 @@ The backend suite also runs in CI on every push — see [.github/workflows/backe
 │           │   ├── cart/     # Cart page & order confirmation (lazy-loaded)
 │           │   └── admin/    # Activity Log and Page views (lazy-loaded)
 │           └── shared/       # Navbar, loading spinner, confirm dialog, form controls, pipes
-└── docs/                     # Dependency reference
+└── docs/                     # Dependency reference and backend reviews
 ```
 
 ## Detailed Documentation
 
 - [docs/app-dependencies.md](docs/app-dependencies.md) — Runtime and development dependency reference
+- [docs/BACKEND_REVIEW_2026-09-23-2.md](docs/BACKEND_REVIEW_2026-09-23-2.md) — Latest backend review (90 / 100), with the two earlier ones alongside it
 - [app/frontend/README.md](app/frontend/README.md) — Angular project structure, features, and key patterns
 - [app/backend/README.md](app/backend/README.md) — API routes, environment variables, and database scripts

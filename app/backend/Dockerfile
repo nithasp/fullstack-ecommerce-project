@@ -26,4 +26,4 @@ USER node
 
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "--enable-source-maps", "dist/server.js"]
