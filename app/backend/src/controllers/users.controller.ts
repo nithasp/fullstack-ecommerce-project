@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { idParams } from '../schemas/common.schema';
 import { changePasswordSchema, profileUpdateSchema } from '../schemas/user.schema';
-import * as userService from '../services/user.service';
+import { userService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { setRefreshCookie } from '../utils/refreshCookie';

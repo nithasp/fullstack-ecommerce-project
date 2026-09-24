@@ -1,6 +1,7 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { config } from './config';
 import { logger } from './logger';
+import { Tx } from './types/database.types';
 
 const { url, host, port, name, user, password, sslMode, sslCa } = config.database;
 
@@ -19,7 +20,7 @@ const pool = new Pool(
 
 pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
 
-export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Promise<T> {
+export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   const tx = await pool.connect();
   try {
     await tx.query('BEGIN');
@@ -27,10 +28,24 @@ export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Pr
     await tx.query('COMMIT');
     return result;
   } catch (err) {
-    await tx.query('ROLLBACK');
+    await tx
+      .query('ROLLBACK')
+      .catch((rollbackErr: unknown) => logger.error({ err: rollbackErr }, 'rollback failed'));
     throw err;
   } finally {
     tx.release();
+  }
+}
+
+// Reports whether the database is reachable, so a deploy that cannot reach Postgres fails its
+// health check instead of being sent live traffic
+export async function checkDatabase(): Promise<boolean> {
+  try {
+    await pool.query('SELECT 1');
+    return true;
+  } catch (err) {
+    logger.error({ err }, 'database health check failed');
+    return false;
   }
 }
 

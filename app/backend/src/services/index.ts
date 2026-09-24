@@ -1,0 +1,34 @@
+import { AddressRepository } from '../repositories/address.repository';
+import { AuditLogRepository } from '../repositories/auditLog.repository';
+import { CartRepository } from '../repositories/cart.repository';
+import { OrderRepository } from '../repositories/order.repository';
+import { PageViewRepository } from '../repositories/pageView.repository';
+import { ProductRepository } from '../repositories/product.repository';
+import { RefreshTokenRepository } from '../repositories/refreshToken.repository';
+import { UserRepository } from '../repositories/user.repository';
+import { createAddressService } from './address.service';
+import { createAuditService } from './audit.service';
+import { createCartService } from './cart.service';
+import { createOrderService } from './order.service';
+import { createPageViewService } from './pageView.service';
+import { createProductService } from './product.service';
+import { createTokenService } from './token.service';
+import { createUserService } from './user.service';
+
+const addresses = new AddressRepository();
+const auditLogs = new AuditLogRepository();
+const carts = new CartRepository();
+const orders = new OrderRepository();
+const pageViews = new PageViewRepository();
+const products = new ProductRepository();
+const refreshTokens = new RefreshTokenRepository();
+const users = new UserRepository();
+
+export const auditService = createAuditService({ auditLogs });
+export const tokenService = createTokenService({ refreshTokens, users, audit: auditService });
+export const userService = createUserService({ users, orders, addresses, carts, tokens: tokenService });
+export const addressService = createAddressService({ addresses });
+export const cartService = createCartService({ addresses, carts, orders, products });
+export const orderService = createOrderService({ orders, products });
+export const pageViewService = createPageViewService({ pageViews });
+export const productService = createProductService({ products });

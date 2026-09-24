@@ -10,6 +10,7 @@ function formatPath(path: readonly PropertyKey[]): string {
 
 function firstProblem(error: ZodError): string {
   const issue = error.issues[0];
+  if (!issue) return 'is not valid';
   const field = formatPath(issue.path);
   return field ? `${field} ${issue.message}` : issue.message;
 }

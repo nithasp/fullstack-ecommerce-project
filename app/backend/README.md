@@ -52,6 +52,7 @@ value is missing or too short, so nothing silently falls back to an insecure def
 | `SALT_ROUNDS` | – | bcrypt cost, 10–15 (default 10) |
 | `ACCESS_TOKEN_EXPIRY` | – | Default `15m`. Access tokens cannot be revoked, so keep this short |
 | `REFRESH_TOKEN_EXPIRY_DAYS` | – | Default 7 |
+| `REFRESH_COOKIE_SAMESITE` | – | `strict`, `lax` or `none` for the refresh cookie. Defaults to `none` under `ENV=production` (frontend and API on different sites) and `strict` otherwise. `none` is refused unless `ENV=production`, which is what sets `Secure` |
 | `PORT` | – | Default 3000 |
 | `ALLOWED_ORIGIN` | – | Comma-separated browser origins allowed to call the API |
 | `TRUST_PROXY` | – | Number of proxies in front of the app (Railway and similar: 1). Decides which IP the rate limiter and the audit log see |
@@ -163,10 +164,19 @@ List routes are paginated with `?limit=` (1–100, default 50) and `?offset=`, a
 ### Sessions
 
 `POST /auth/register`, `/auth/login` and `/auth/refresh` return `{ user, accessToken }` and set
-the refresh token as an **HttpOnly cookie** (`SameSite=Strict`, `Path=/api/v1/auth`, `Secure` in
-production) that JavaScript cannot read. Browser clients send those calls with credentials, and
-the API has to be on the same site as the page for the cookie to travel — in production that
-means a shared domain, e.g. `store.example.com` and `api.example.com`.
+the refresh token as an **HttpOnly cookie** (`Path=/api/v1/auth`, `Secure` in production) that
+JavaScript cannot read. Browser clients send those calls with credentials.
+
+`SameSite` follows the deployment, and `REFRESH_COOKIE_SAMESITE` overrides it:
+
+| `ENV` | Default | Why |
+| ----- | ------- | --- |
+| `production` | `none` | The frontend and the API are on different sites, and a `Strict` cookie would never be sent to `/auth/refresh` — the session could not be renewed. `none` requires `Secure`, which `ENV=production` sets |
+| anything else | `strict` | Page and API share `localhost`, so the tightest setting works |
+
+Set `REFRESH_COOKIE_SAMESITE=strict` in production only when the frontend and the API are served
+from one site, e.g. `store.example.com` and `api.example.com`. `none` is rejected outside
+`ENV=production`, because without `Secure` a browser drops the cookie entirely.
 
 Refresh tokens rotate on every use, and presenting one twice revokes that whole session.
 
@@ -210,6 +220,14 @@ docker run --rm -p 3000:3000 --env-file .env storefront-backend
 Migrations are a **release step**, not something the server does at boot.
 [`railway.json`](railway.json) wires that up for Railway (`preDeployCommand`); on another
 platform run `npm run migrate:prod` before the new version starts.
+
+`GET /healthz` runs `SELECT 1` and answers 503 when the database is unreachable, so a deploy that
+cannot reach Postgres never receives traffic. `railway.json` points `healthcheckPath` at it and the
+Dockerfile probes the same route.
+
+Migrations read their TLS settings from `DATABASE_SSL` and `DATABASE_SSL_CA` through
+[`database.js`](database.js), the same rule `src/config.ts` applies to the app, so the pre-deploy
+step cannot end up trusting a certificate the server would reject.
 
 A deployment needs at least: `ENV=production`, `DATABASE_URL` (plus `DATABASE_SSL` if the
 provider uses a self-signed certificate), `TOKEN_SECRET`, `PASSWORD_PEPPER`, `ALLOWED_ORIGIN`

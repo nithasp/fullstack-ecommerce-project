@@ -2,8 +2,7 @@ import app from './app';
 import { config } from './config';
 import pool from './database';
 import { logger } from './logger';
-import { flushAuditLog, purgeExpiredAuditLogs } from './services/audit.service';
-import { purgeExpiredPageViews } from './services/pageView.service';
+import { auditService, pageViewService } from './services';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -11,13 +10,15 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const server = app.listen(config.port, () => logger.info({ port: config.port }, 'server listening'));
 
 function purgeOldRows(): void {
-  purgeExpiredAuditLogs()
+  auditService
+    .purgeExpiredAuditLogs()
     .then((deleted) => {
       if (deleted) logger.info({ deleted, days: config.auditLogRetentionDays }, 'audit log rows deleted');
     })
     .catch((err: unknown) => logger.error({ err }, 'audit log cleanup failed'));
 
-  purgeExpiredPageViews()
+  pageViewService
+    .purgeExpiredPageViews()
     .then((deleted) => {
       if (deleted) logger.info({ deleted, days: config.pageViewRetentionDays }, 'page view rows deleted');
     })
@@ -43,7 +44,7 @@ async function shutdown(signal: string): Promise<void> {
   force.unref();
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  await flushAuditLog();
+  await auditService.flushAuditLog();
   await pool.end();
 
   clearTimeout(force);

@@ -17,7 +17,7 @@ WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY package.json database.json openapi.yaml ./
+COPY package.json database.js openapi.yaml ./
 COPY migrations ./migrations
 COPY public ./public
 
@@ -25,5 +25,8 @@ COPY public ./public
 USER node
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "require('http').get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/healthz'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
 
 CMD ["node", "--enable-source-maps", "dist/server.js"]

@@ -1,9 +1,9 @@
-import { flushAuditLog } from '../../services/audit.service';
+import { auditService } from '../../services';
 import { AuditRow } from '../../types/test.types';
 import { api, API, createAdmin, createProduct, registerCustomer, uniqueName } from '../support/api';
 
 async function auditRows(admin: Awaited<ReturnType<typeof createAdmin>>, query = ''): Promise<AuditRow[]> {
-  await flushAuditLog();
+  await auditService.flushAuditLog();
   const res = await admin.get(`/admin/audit-logs?limit=100${query}`).expect(200);
   return res.body.data as AuditRow[];
 }
@@ -60,7 +60,7 @@ describe('Activity trail', () => {
 
     const rows = await auditRows(admin, `&action=LOGIN_FAILED&username=${customer.username}`);
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].event).toBe('user.login_failed');
+    expect(rows[0]?.event).toBe('user.login_failed');
     expect(JSON.stringify(rows[0])).not.toContain('wrong-password');
   });
 

@@ -43,7 +43,7 @@ export class AuditLogRepository {
   async count(filters: AuditLogFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM audit_logs${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async deleteOlderThan(days: number, db: Queryable = pool): Promise<number> {

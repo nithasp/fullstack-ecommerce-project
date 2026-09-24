@@ -6,6 +6,8 @@
   },
   "deploy": {
     "startCommand": "node --enable-source-maps dist/server.js",
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 30,
     "preDeployCommand": ["npm run migrate:prod"],
     "restartPolicyType": "ON_FAILURE"
   }

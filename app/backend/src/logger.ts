@@ -16,8 +16,8 @@ const REDACTED_PATHS = [
 export const logger = pino({
   level: config.logLevel,
   redact: { paths: REDACTED_PATHS, remove: true },
-  base: undefined,
-  transport: config.prettyLogs
-    ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }
-    : undefined,
+  base: null,
+  ...(config.prettyLogs
+    ? { transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } } }
+    : {}),
 });

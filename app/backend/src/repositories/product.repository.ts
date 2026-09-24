@@ -13,6 +13,7 @@ import {
   Review,
   VariantInput,
 } from '../types/product.types';
+import { requireRow } from '../utils/rows';
 
 const COLUMNS =
   'name, price, category, image, description, preview_img, reviews, overall_rating, stock, is_active, shop_id, shop_name';
@@ -71,7 +72,7 @@ export class ProductRepository {
   async count(filters: ProductFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM products p${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async categories(db: Queryable = pool): Promise<string[]> {
@@ -128,7 +129,7 @@ export class ProductRepository {
       `INSERT INTO products (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
       valuesOf(product),
     );
-    const id = rows[0].id as number;
+    const id = requireRow(rows, 'INSERT INTO products').id as number;
     await this.insertVariants([{ productId: id, variants: toVariantInputs(product.types) }], db);
     return (await this.show(id, true, db)) as Product;
   }
@@ -146,7 +147,7 @@ export class ProductRepository {
 
     const ids = rows.map((row) => row.id as number);
     await this.insertVariants(
-      ids.map((productId, index) => ({ productId, variants: toVariantInputs(products[index].types) })),
+      ids.map((productId, index) => ({ productId, variants: toVariantInputs(products[index]?.types ?? []) })),
       db,
     );
     return this.byIds(ids, db);
@@ -275,15 +276,17 @@ export class ProductRepository {
   }
 }
 
+// % and _ in a search term are escaped so they match those characters, instead of acting as
+// wildcards that would widen the query beyond what the caller asked for
+const likeTerm = (search: string): string => `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+
 function where(filters: ProductFilters, params: unknown[]): string {
   const conditions: string[] = [];
   if (!filters.includeInactive) conditions.push('p.is_active');
   if (filters.category) conditions.push(`LOWER(p.category) = LOWER($${params.push(filters.category)})`);
   if (filters.search) {
-    const index = params.push(filters.search.toLowerCase());
-    conditions.push(
-      `(STRPOS(LOWER(p.name), $${index}) > 0 OR STRPOS(LOWER(COALESCE(p.description, '')), $${index}) > 0)`,
-    );
+    const index = params.push(likeTerm(filters.search));
+    conditions.push(`(p.name ILIKE $${index} OR p.description ILIKE $${index})`);
   }
   return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
 }

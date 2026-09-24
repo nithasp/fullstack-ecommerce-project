@@ -6,7 +6,7 @@ import {
   resetPasswordSchema,
   roleUpdateSchema,
 } from '../../schemas/user.schema';
-import * as userService from '../../services/user.service';
+import { userService } from '../../services';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { AppError } from '../../utils/errors';
 import { currentUserId } from '../../utils/request';

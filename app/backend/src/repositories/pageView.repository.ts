@@ -32,7 +32,7 @@ export class PageViewRepository {
   async count(filters: PageViewFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM page_views${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async deleteOlderThan(days: number, db: Queryable = pool): Promise<number> {

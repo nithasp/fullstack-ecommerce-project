@@ -1,9 +1,21 @@
+import pool from '../../database';
 import { api, API } from '../support/api';
 
 describe('App', () => {
-  it('answers the health check', async () => {
+  it('answers the root route', async () => {
     const res = await api.get('/').expect(200);
     expect(res.body.message).toBe('Storefront API is running!');
+  });
+
+  it('reports ready on the health check when the database answers', async () => {
+    const res = await api.get('/healthz').expect(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
+
+  it('reports 503 on the health check when the database is unreachable', async () => {
+    spyOn(pool, 'query').and.throwError('connection refused');
+    const res = await api.get('/healthz').expect(503);
+    expect(res.body).toEqual({ status: 'unavailable' });
   });
 
   it('answers an unknown route with a JSON 404 in the envelope', async () => {
@@ -43,5 +55,15 @@ describe('App', () => {
       .send('{"username":')
       .expect(400);
     expect(res.body.message).toBe('Request body must be valid JSON');
+  });
+
+  it('rejects a body past the configured limit', async () => {
+    const res = await api
+      .post(`${API}/auth/login`)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ username: 'a'.repeat(1_200_000), password: 'whatever' }))
+      .expect(413);
+    expect(res.body.message).toBe('Request body is too large');
+    expect(res.body.code).toBe('invalid_request');
   });
 });

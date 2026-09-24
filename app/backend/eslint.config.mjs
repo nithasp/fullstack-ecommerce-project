@@ -9,7 +9,7 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ['eslint.config.mjs'] },
+        projectService: { allowDefaultProject: ['eslint.config.mjs', 'database.js'] },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -24,6 +24,13 @@ export default tseslint.config(
   {
     files: ['src/scripts/**/*.ts', 'src/logger.ts'],
     rules: { 'no-console': 'off' },
+  },
+  {
+    files: ['database.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { module: 'writable', process: 'readonly', require: 'readonly' },
+    },
   },
   prettier,
 );

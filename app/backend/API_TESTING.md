@@ -1,6 +1,6 @@
 # API Testing (cURL)
 
-> API base URL: `http://localhost:3000/api/v1` — run `npm run watch` first. (The health check, `/docs` and `/openapi.yaml` sit at the server root.)
+> API base URL: `http://localhost:3000/api/v1` — run `npm run watch` first. (The health checks, `/docs` and `/openapi.yaml` sit at the server root.)
 >
 > Prefer Postman? Import [`postman/storefront-api.postman_collection.json`](postman/storefront-api.postman_collection.json) — it covers every route below and saves tokens and ids automatically.
 >
@@ -90,6 +90,12 @@ curl -s $API/products/popular -H "Authorization: Bearer $TOKEN"
 ```bash
 curl http://localhost:3000/
 # { "message": "Storefront API is running!" }
+
+# Readiness: runs SELECT 1, so it answers 503 when Postgres is unreachable.
+# This is the path Railway polls before it sends traffic to a new deploy.
+curl -i http://localhost:3000/healthz
+# HTTP/1.1 200 OK
+# { "status": "ok" }
 ```
 
 ---

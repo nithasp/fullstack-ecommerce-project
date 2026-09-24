@@ -28,24 +28,24 @@ export interface AuditRule {
   method: string;
   pattern: RegExp;
   event: string | null;
-  details?: AuditDetailsFn;
+  details?: AuditDetailsFn | undefined;
 }
 
 export interface AuditSource {
-  method?: string | null;
-  path?: string | null;
-  ipAddress?: string | null;
-  userAgent?: string | null;
+  method?: string | null | undefined;
+  path?: string | null | undefined;
+  ipAddress?: string | null | undefined;
+  userAgent?: string | null | undefined;
 }
 
 export interface NewAuditLog extends AuditSource {
-  userId?: number | null;
-  username?: string | null;
-  userRole?: UserRole | null;
+  userId?: number | null | undefined;
+  username?: string | null | undefined;
+  userRole?: UserRole | null | undefined;
   action: AuditAction;
   event: string;
-  statusCode?: number | null;
-  details?: AuditDetails | null;
+  statusCode?: number | null | undefined;
+  details?: AuditDetails | null | undefined;
 }
 
 export type AuditAnnotation = Pick<
@@ -70,10 +70,10 @@ export interface AuditLog {
 }
 
 export interface AuditLogFilters {
-  userId?: number;
-  username?: string;
-  actions?: AuditAction[];
-  result?: AuditResult;
-  from?: Date;
-  to?: Date;
+  userId?: number | undefined;
+  username?: string | undefined;
+  actions?: AuditAction[] | undefined;
+  result?: AuditResult | undefined;
+  from?: Date | undefined;
+  to?: Date | undefined;
 }

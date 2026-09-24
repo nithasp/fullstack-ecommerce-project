@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { addCartItemSchema, cartQuantitySchema, checkoutSchema } from '../schemas/cart.schema';
 import { idParams } from '../schemas/common.schema';
-import * as cartService from '../services/cart.service';
+import { cartService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { currentUserId } from '../utils/request';
 import { sendSuccess } from '../utils/response';

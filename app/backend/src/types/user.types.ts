@@ -21,7 +21,7 @@ export interface NewUser {
   lastName: string;
   username: string;
   password: string;
-  role?: UserRole;
+  role?: UserRole | undefined;
 }
 
 export interface NewUserRow extends Omit<NewUser, 'password'> {
@@ -30,7 +30,7 @@ export interface NewUserRow extends Omit<NewUser, 'password'> {
 }
 
 export interface ProfileUpdate {
-  firstName?: string;
-  lastName?: string;
-  username?: string;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  username?: string | undefined;
 }

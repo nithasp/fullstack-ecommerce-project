@@ -22,6 +22,25 @@ export interface TestBuyer extends TestUser {
   addressId: number;
 }
 
+export interface ErrorEnvelope {
+  status: number;
+  message: string;
+  data: null;
+  code?: string | undefined;
+}
+
+export interface CapturedError {
+  statusCode: number;
+  body: ErrorEnvelope;
+  logged: boolean;
+}
+
+export interface PostgresErrorFields {
+  code: string;
+  constraint?: string | undefined;
+  detail?: string | undefined;
+}
+
 export interface AuditRow {
   action: string;
   event: string;

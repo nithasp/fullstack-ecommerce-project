@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { recordEvent } from '../services/audit.service';
+import { auditService } from '../services';
 import {
   AuditAction,
   AuditAnnotation,
@@ -195,7 +195,7 @@ export const recordActivity = (req: Request, res: Response, next: NextFunction):
   res.on('finish', () => {
     const annotation = res.locals.audit as AuditAnnotation | undefined;
     const entry = annotation ? fromAnnotation(req, annotation) : fromRoute(req, path);
-    if (entry) recordEvent({ ...requestSource(req), statusCode: res.statusCode, ...entry });
+    if (entry) auditService.recordEvent({ ...requestSource(req), statusCode: res.statusCode, ...entry });
   });
   next();
 };

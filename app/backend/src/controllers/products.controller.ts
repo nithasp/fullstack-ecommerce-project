@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { idParams, paginationSchema } from '../schemas/common.schema';
 import { productFiltersSchema } from '../schemas/product.schema';
-import * as productService from '../services/product.service';
+import { productService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { parse } from '../utils/validation';

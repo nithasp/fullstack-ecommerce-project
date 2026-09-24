@@ -4,6 +4,7 @@ import { ProductRepository } from '../../repositories/product.repository';
 import { UserRepository } from '../../repositories/user.repository';
 import { CURRENT_PASSWORD_VERSION, hashPassword } from '../../services/password.service';
 import { createAdmin, createProduct, registerCustomer, uniqueName } from '../support/api';
+import { requireRow } from '../../utils/rows';
 
 const users = new UserRepository();
 const products = new ProductRepository();
@@ -61,7 +62,7 @@ describe('Repositories', () => {
       const before = Date.now();
       await customer.post('/cart', { productId: product.id, quantity: 1 }).expect(201);
 
-      const [item] = await carts.listByUser(customer.id);
+      const item = requireRow(await carts.listByUser(customer.id));
       const written = new Date(item.createdAt).getTime();
 
       expect(written).toBeGreaterThan(before - 60_000);
@@ -79,7 +80,7 @@ describe('Repositories', () => {
 
       const product = await products.show(created.id);
       expect(typeof product?.price).toBe('string');
-      expect(product?.types[0].price).toBe(5.5);
+      expect(product?.types[0]?.price).toBe(5.5);
       expect(Array.isArray(product?.reviews)).toBe(true);
       expect(product?.isActive).toBe(true);
     });
@@ -108,7 +109,7 @@ describe('Repositories', () => {
         );
       }
 
-      const [item] = await carts.listByUser(customer.id);
+      const item = requireRow(await carts.listByUser(customer.id));
       expect(item.quantity).toBe(999);
     });
   });

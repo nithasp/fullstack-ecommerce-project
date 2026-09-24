@@ -11,6 +11,7 @@ import {
   RecentPurchase,
 } from '../types/order.types';
 import { Pagination } from '../types/pagination.types';
+import { requireRow } from '../utils/rows';
 
 const SHIPPING = 'o.address_id, o.ship_full_name, o.ship_phone, o.ship_address, o.ship_city, o.ship_label';
 
@@ -32,7 +33,7 @@ export class OrderRepository {
   async count(filters: OrderFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM orders o${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async show(id: number, db: Queryable = pool): Promise<Order | null> {
@@ -63,7 +64,7 @@ export class OrderRepository {
         shipping?.label ?? null,
       ],
     );
-    return toOrder(rows[0]);
+    return toOrder(requireRow(rows, 'INSERT INTO orders'));
   }
 
   async updateStatus(id: number, status: OrderStatus, db: Queryable = pool): Promise<Order | null> {
@@ -71,11 +72,22 @@ export class OrderRepository {
     return rows[0] ? this.show(id, db) : null;
   }
 
+  // Both branches read the same snapshot, so the total is the one the order had before it went and
+  // two requests racing on the same order cannot both be told they deleted it
   async delete(id: number, db: Queryable = pool): Promise<Order | null> {
-    const existing = await this.show(id, db);
-    if (!existing) return null;
-    await db.query('DELETE FROM orders WHERE id = $1', [id]);
-    return existing;
+    const { rows } = await db.query(
+      `WITH total AS (
+         SELECT COALESCE(SUM(op.quantity * op.unit_price), 0) AS total
+         FROM order_products op WHERE op.order_id = $1
+       ),
+       deleted AS (DELETE FROM orders WHERE id = $1 RETURNING *)
+       SELECT deleted.id, deleted.user_id, deleted.status, deleted.created_at,
+              deleted.address_id, deleted.ship_full_name, deleted.ship_phone,
+              deleted.ship_address, deleted.ship_city, deleted.ship_label, total.total
+       FROM deleted CROSS JOIN total`,
+      [id],
+    );
+    return rows[0] ? toOrder(rows[0]) : null;
   }
 
   async lines(orderId: number, db: Queryable = pool): Promise<OrderLine[]> {
@@ -86,8 +98,7 @@ export class OrderRepository {
   }
 
   async addLine(orderId: number, line: NewOrderLine, db: Queryable = pool): Promise<OrderLine> {
-    const [created] = await this.addLines(orderId, [line], db);
-    return created;
+    return requireRow(await this.addLines(orderId, [line], db), 'INSERT INTO order_products');
   }
 
   async addLines(orderId: number, lines: NewOrderLine[], db: Queryable = pool): Promise<OrderLine[]> {

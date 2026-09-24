@@ -24,6 +24,7 @@ const envSchema = z
     TOKEN_SECRET: secret,
     ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
     REFRESH_TOKEN_EXPIRY_DAYS: z.coerce.number().int().positive().max(365).default(7),
+    REFRESH_COOKIE_SAMESITE: z.enum(['strict', 'lax', 'none']).optional(),
 
     PASSWORD_PEPPER: secret,
     BCRYPT_PASSWORD: z.string().optional(),
@@ -50,6 +51,12 @@ const envSchema = z
   .refine((env) => env.DATABASE_URL || (env.POSTGRES_USER && env.POSTGRES_PASSWORD), {
     error: 'set DATABASE_URL, or POSTGRES_USER and POSTGRES_PASSWORD',
     path: ['DATABASE_URL'],
+  })
+  // A browser drops a SameSite=None cookie that is not also Secure, which would leave production
+  // with no refresh cookie at all (OWASP API2)
+  .refine((env) => env.REFRESH_COOKIE_SAMESITE !== 'none' || env.ENV === 'production', {
+    error: "'none' needs the Secure flag, which is only set when ENV=production",
+    path: ['REFRESH_COOKIE_SAMESITE'],
   });
 
 // An unset or unusable value stops the process here rather than falling back to a default that
@@ -72,6 +79,11 @@ function readEnv(): z.infer<typeof envSchema> {
 const env = readEnv();
 
 const sslMode = env.DATABASE_SSL ?? (env.DATABASE_URL ? 'verify' : 'off');
+
+// The frontend and the API are served from different sites in production, so a Strict cookie is
+// never attached to the refresh call and the session cannot be renewed; None keeps it cross-site
+// while Secure and the /auth path stop it travelling anywhere else (OWASP API2)
+const refreshCookieSameSite = env.REFRESH_COOKIE_SAMESITE ?? (env.ENV === 'production' ? 'none' : 'strict');
 
 export const config = {
   env: env.ENV,
@@ -116,7 +128,7 @@ export const config = {
   refreshCookie: {
     name: 'refreshToken',
     path: '/api/v1/auth',
-    sameSite: 'strict' as const,
+    sameSite: refreshCookieSameSite,
     httpOnly: true,
     secure: env.ENV === 'production',
     maxAgeMs: env.REFRESH_TOKEN_EXPIRY_DAYS * DAY_MS,

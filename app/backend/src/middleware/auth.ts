@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
+import { userService } from '../services';
 import { verifyAccessToken } from '../services/token.service';
-import { findUser } from '../services/user.service';
 import { sendError } from '../utils/response';
 
 export const verifyAuthToken = (req: Request, res: Response, next: NextFunction): void => {
@@ -39,7 +39,7 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const user = await findUser(req.user.userId);
+    const user = await userService.findUser(req.user.userId);
     if (!user) {
       sendError(res, 401, 'Invalid token.', 'token_invalid');
       return;

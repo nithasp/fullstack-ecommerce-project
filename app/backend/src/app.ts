@@ -5,6 +5,7 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { config } from './config';
+import { checkDatabase } from './database';
 import { logger } from './logger';
 import { recordActivity } from './middleware/audit';
 import { errorMiddleware, notFoundMiddleware } from './middleware/error';
@@ -13,6 +14,7 @@ import apiRoutes from './routes';
 import docsRoutes from './routes/docs.routes';
 
 export const API_PREFIX = '/api/v1';
+export const HEALTH_PATH = '/healthz';
 
 const MAX_REQUEST_ID_LENGTH = 64;
 
@@ -34,6 +36,7 @@ app.use(
     },
     customLogLevel: (_req, res, err) =>
       err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+    autoLogging: { ignore: (req) => req.url === HEALTH_PATH },
   }),
 );
 
@@ -43,6 +46,16 @@ app.use(cors({ origin: config.allowedOrigins, credentials: true }));
 app.use(express.json({ limit: config.jsonBodyLimit }));
 app.use(cookieParser());
 app.set('etag', false);
+
+// Ahead of the rate limiter, so the platform's probe is never throttled and never spends a
+// caller's budget
+app.get(HEALTH_PATH, async (_req: Request, res: Response) => {
+  if (!(await checkDatabase())) {
+    res.status(503).json({ status: 'unavailable' });
+    return;
+  }
+  res.json({ status: 'ok' });
+});
 
 // Per-IP ceiling on every route (OWASP API4); the auth routes add a tighter one of their own
 app.use(apiLimiter);

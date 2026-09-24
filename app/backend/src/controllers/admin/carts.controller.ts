@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import { addCartItemSchema, cartQuantitySchema } from '../../schemas/cart.schema';
 import { idParams, paginationSchema, userIdFilterSchema, userIdParams } from '../../schemas/common.schema';
-import * as cartService from '../../services/cart.service';
-import { requireUser } from '../../services/user.service';
+import { cartService, userService } from '../../services';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
@@ -16,20 +15,20 @@ export const index = asyncHandler(async (req: Request, res: Response) => {
 
 export const showUserCart = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = parse(userIdParams, req.params);
-  await requireUser(userId);
+  await userService.requireUser(userId);
   sendSuccess(res, await cartService.getCart(userId), 'Cart fetched.');
 });
 
 export const addUserCartItem = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = parse(userIdParams, req.params);
   const input = parse(addCartItemSchema, req.body);
-  await requireUser(userId);
+  await userService.requireUser(userId);
   sendSuccess(res, await cartService.addItem(userId, input), 'Item added to cart.', 201);
 });
 
 export const clearUserCart = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = parse(userIdParams, req.params);
-  await requireUser(userId);
+  await userService.requireUser(userId);
   await cartService.clearCart(userId);
   sendSuccess(res, null, 'Cart cleared.');
 });

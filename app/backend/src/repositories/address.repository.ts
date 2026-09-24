@@ -1,7 +1,8 @@
 import pool from '../database';
-import { Address, AddressLabel, AddressUpdate, NewAddress } from '../types/address.types';
+import { Address, AddressFilters, AddressLabel, AddressUpdate, NewAddress } from '../types/address.types';
 import { Queryable } from '../types/database.types';
 import { Pagination } from '../types/pagination.types';
+import { requireRow } from '../utils/rows';
 
 export class AddressRepository {
   async listByUser(userId: number, db: Queryable = pool): Promise<Address[]> {
@@ -12,7 +13,7 @@ export class AddressRepository {
     return rows.map(toAddress);
   }
 
-  async listAll(filters: { userId?: number }, page: Pagination, db: Queryable = pool): Promise<Address[]> {
+  async listAll(filters: AddressFilters, page: Pagination, db: Queryable = pool): Promise<Address[]> {
     const params: unknown[] = [];
     const sql = `SELECT * FROM addresses${where(filters, params)}
                  ORDER BY user_id ASC, is_default DESC, created_at ASC
@@ -21,10 +22,10 @@ export class AddressRepository {
     return rows.map(toAddress);
   }
 
-  async count(filters: { userId?: number }, db: Queryable = pool): Promise<number> {
+  async count(filters: AddressFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM addresses${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async findById(id: number, db: Queryable = pool): Promise<Address | null> {
@@ -39,7 +40,7 @@ export class AddressRepository {
 
   async countForUser(userId: number, db: Queryable = pool): Promise<number> {
     const { rows } = await db.query('SELECT COUNT(*) FROM addresses WHERE user_id = $1', [userId]);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async create(userId: number, form: NewAddress, isDefault: boolean, db: Queryable = pool): Promise<Address> {
@@ -48,7 +49,7 @@ export class AddressRepository {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [userId, form.fullName, form.phone ?? null, form.address, form.city, form.label, isDefault],
     );
-    return toAddress(rows[0]);
+    return toAddress(requireRow(rows, 'INSERT INTO addresses'));
   }
 
   async update(id: number, changes: AddressUpdate, db: Queryable = pool): Promise<Address | null> {
@@ -92,7 +93,7 @@ export class AddressRepository {
   }
 }
 
-function where(filters: { userId?: number }, params: unknown[]): string {
+function where(filters: AddressFilters, params: unknown[]): string {
   return filters.userId ? ` WHERE user_id = $${params.push(filters.userId)}` : '';
 }
 

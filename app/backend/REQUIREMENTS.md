@@ -2,7 +2,8 @@
 
 ## API Endpoints
 
-**Base path:** every route below is served under `/api/v1` — e.g. `POST /api/v1/auth/login`. The tables leave the prefix out for readability. Only `GET /` (health check), `GET /docs` and `GET /openapi.yaml` sit outside it; any other unknown path answers `404` with the envelope.
+**Base path:** every route below is served under `/api/v1` — e.g. `POST /api/v1/auth/login`. The tables leave the prefix out for readability. Only `GET /` (liveness), `GET /healthz` (readiness — checks the database), `GET /docs` and
+`GET /openapi.yaml` sit outside it; any other unknown path answers `404` with the envelope.
 
 **Envelope:** every response is `{ status, message, data }`, and an error adds a machine-readable `code` (`invalid_request`, `no_token`, `token_expired`, `token_invalid`, `invalid_credentials`, `forbidden`, `not_found`, `conflict`, `rate_limited`, `internal_error`).
 
@@ -20,7 +21,7 @@
 
 ### Auth
 
-The refresh token is **not** in the response body. It is set as a cookie the browser keeps and JavaScript cannot read: `HttpOnly; SameSite=Strict; Path=/api/v1/auth` (and `Secure` in production). Browser clients send these calls with credentials.
+The refresh token is **not** in the response body. It is set as a cookie the browser keeps and JavaScript cannot read: `HttpOnly; Path=/api/v1/auth` (and `Secure` in production). `SameSite` is `none` under `ENV=production`, where the frontend and the API sit on different sites, and `strict` otherwise; `REFRESH_COOKIE_SAMESITE` overrides it. Browser clients send these calls with credentials.
 
 | Method | Route               | Auth | Description                          |
 | ------ | ------------------- | ---- | ------------------------------------ |

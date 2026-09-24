@@ -32,13 +32,17 @@ export interface CartItem {
 export interface AddCartItem {
   productId: number;
   quantity: number;
-  typeId?: string | null;
+  typeId?: string | null | undefined;
 }
 
 export interface UpsertCartItem {
   productId: number;
   quantity: number;
   variantId: number | null;
+}
+
+export interface CartFilters {
+  userId?: number | undefined;
 }
 
 export interface CheckoutLine {

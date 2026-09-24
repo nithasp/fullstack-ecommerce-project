@@ -49,12 +49,12 @@ export interface NewOrderLine {
 export interface OrderLineRequest {
   productId: number;
   quantity: number;
-  typeId?: string | null;
+  typeId?: string | null | undefined;
 }
 
 export interface OrderFilters {
-  status?: OrderStatus;
-  userId?: number;
+  status?: OrderStatus | undefined;
+  userId?: number | undefined;
 }
 
 export interface RecentPurchase {

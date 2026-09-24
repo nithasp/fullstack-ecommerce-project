@@ -1,14 +1,15 @@
 import { PoolClient } from 'pg';
 import pool from '../database';
-import { CartItem, CheckoutLine, MAX_CART_QUANTITY, UpsertCartItem } from '../types/cart.types';
+import { CartFilters, CartItem, CheckoutLine, MAX_CART_QUANTITY, UpsertCartItem } from '../types/cart.types';
 import { Queryable } from '../types/database.types';
 import { Pagination } from '../types/pagination.types';
 import { Review } from '../types/product.types';
 import { toProductType, toProductTypes } from './product.repository';
+import { requireRow } from '../utils/rows';
 
 // The chosen option is read from product_variants on every request rather than from a copy taken
 // when the item was added, so the cart cannot show a price that checkout will not charge
-const WITH_PRODUCT = `SELECT ci.*,
+const selectItems = (source: string): string => `SELECT ci.*,
          p.name           AS product_name,
          p.price          AS product_price,
          p.category       AS product_category,
@@ -27,7 +28,7 @@ const WITH_PRODUCT = `SELECT ci.*,
            '_id', v.ext_id, 'productId', v.product_id, 'color', v.color,
            'price', v.price, 'stock', v.stock, 'image', v.image
          ) END AS selected_type
-  FROM cart_items ci
+  FROM ${source} ci
   JOIN products p ON p.id = ci.product_id
   LEFT JOIN product_variants v ON v.id = ci.variant_id
   LEFT JOIN LATERAL (
@@ -45,6 +46,8 @@ const WITH_PRODUCT = `SELECT ci.*,
     WHERE pvv.product_id = p.id
   ) pv ON true`;
 
+const WITH_PRODUCT = selectItems('cart_items');
+
 export class CartRepository {
   async listByUser(userId: number, db: Queryable = pool): Promise<CartItem[]> {
     const { rows } = await db.query(`${WITH_PRODUCT} WHERE ci.user_id = $1 ORDER BY ci.created_at ASC`, [
@@ -53,7 +56,7 @@ export class CartRepository {
     return rows.map(toCartItem);
   }
 
-  async listAll(filters: { userId?: number }, page: Pagination, db: Queryable = pool): Promise<CartItem[]> {
+  async listAll(filters: CartFilters, page: Pagination, db: Queryable = pool): Promise<CartItem[]> {
     const params: unknown[] = [];
     const sql = `${WITH_PRODUCT}${where(filters, params)}
                  ORDER BY ci.user_id ASC, ci.created_at ASC
@@ -62,10 +65,10 @@ export class CartRepository {
     return rows.map(toCartItem);
   }
 
-  async count(filters: { userId?: number }, db: Queryable = pool): Promise<number> {
+  async count(filters: CartFilters, db: Queryable = pool): Promise<number> {
     const params: unknown[] = [];
     const { rows } = await db.query(`SELECT COUNT(*) FROM cart_items ci${where(filters, params)}`, params);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async findById(cartItemId: number, userId?: number, db: Queryable = pool): Promise<CartItem | null> {
@@ -93,7 +96,8 @@ export class CartRepository {
        RETURNING id`,
       [userId, item.productId, item.quantity, item.variantId, shop.shopId, shop.shopName],
     );
-    return (await this.findById(rows[0].id as number, userId, db)) as CartItem;
+    const id = requireRow(rows, 'INSERT INTO cart_items').id as number;
+    return (await this.findById(id, userId, db)) as CartItem;
   }
 
   async updateQuantity(
@@ -111,11 +115,17 @@ export class CartRepository {
     return rowCount ? this.findById(cartItemId, userId, db) : null;
   }
 
+  // Deleting and reading the deleted row is one statement, so two requests racing on the same item
+  // cannot both be told they removed it
   async remove(cartItemId: number, userId?: number, db: Queryable = pool): Promise<CartItem | null> {
-    const existing = await this.findById(cartItemId, userId, db);
-    if (!existing) return null;
-    await db.query('DELETE FROM cart_items WHERE id = $1', [cartItemId]);
-    return existing;
+    const params: unknown[] = [cartItemId];
+    const scope = userId === undefined ? '' : ` AND user_id = $${params.push(userId)}`;
+    const { rows } = await db.query(
+      `WITH deleted AS (DELETE FROM cart_items WHERE id = $1${scope} RETURNING *)
+       ${selectItems('deleted')}`,
+      params,
+    );
+    return rows[0] ? toCartItem(rows[0]) : null;
   }
 
   async clearByUser(userId: number, db: Queryable = pool): Promise<void> {
@@ -143,7 +153,7 @@ export class CartRepository {
   }
 }
 
-function where(filters: { userId?: number }, params: unknown[]): string {
+function where(filters: CartFilters, params: unknown[]): string {
   return filters.userId ? ` WHERE ci.user_id = $${params.push(filters.userId)}` : '';
 }
 

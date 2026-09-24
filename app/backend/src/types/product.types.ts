@@ -1,10 +1,12 @@
+import { PartialUpdate } from './common.types';
+
 export interface ProductType {
-  _id?: string;
-  productId?: number;
+  _id?: string | undefined;
+  productId?: number | undefined;
   color: string;
   price: number;
   stock: number;
-  image?: string;
+  image?: string | undefined;
 }
 
 export interface ProductVariant {
@@ -36,12 +38,12 @@ export interface LockedCatalog {
 }
 
 export interface Review {
-  _id?: string;
+  _id?: string | undefined;
   star: number;
-  comment?: string;
-  userId?: string;
-  userName?: string;
-  date?: string;
+  comment?: string | undefined;
+  userId?: string | undefined;
+  userName?: string | undefined;
+  date?: string | undefined;
 }
 
 export interface Product {
@@ -62,25 +64,25 @@ export interface Product {
 }
 
 export interface ProductFilters {
-  category?: string;
-  search?: string;
-  includeInactive?: boolean;
+  category?: string | undefined;
+  search?: string | undefined;
+  includeInactive?: boolean | undefined;
 }
 
 export interface NewProduct {
   name: string;
   price: number;
-  category?: string | null;
-  image?: string | null;
-  description?: string | null;
+  category?: string | null | undefined;
+  image?: string | null | undefined;
+  description?: string | null | undefined;
   previewImg: string[];
   types: ProductType[];
   reviews: Review[];
   overallRating: number;
   stock: number;
   isActive: boolean;
-  shopId?: string | null;
-  shopName?: string | null;
+  shopId?: string | null | undefined;
+  shopName?: string | null | undefined;
 }
 
-export type ProductUpdate = Partial<NewProduct>;
+export type ProductUpdate = PartialUpdate<NewProduct>;

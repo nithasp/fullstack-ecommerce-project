@@ -6,8 +6,7 @@ import {
   orderFiltersSchema,
   orderStatusUpdateSchema,
 } from '../../schemas/order.schema';
-import * as orderService from '../../services/order.service';
-import { requireUser } from '../../services/user.service';
+import { orderService, userService } from '../../services';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { sendSuccess } from '../../utils/response';
 import { parse } from '../../utils/validation';
@@ -26,7 +25,7 @@ export const show = asyncHandler(async (req: Request, res: Response) => {
 
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const { userId, status } = parse(newOrderSchema, req.body);
-  await requireUser(userId);
+  await userService.requireUser(userId);
   sendSuccess(res, await orderService.createOrder(userId, status), 'Order created.', 201);
 });
 

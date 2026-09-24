@@ -1,13 +1,7 @@
 import { Request, Response } from 'express';
 import { auditAs } from '../middleware/audit';
 import { loginSchema, registerSchema } from '../schemas/auth.schema';
-import {
-  issueSession,
-  revokeAllSessions,
-  revokeSession,
-  rotateRefreshToken,
-} from '../services/token.service';
-import * as userService from '../services/user.service';
+import { tokenService, userService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../utils/refreshCookie';
@@ -27,7 +21,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     lastName: input.lastName ?? '',
   });
 
-  const { accessToken, refreshToken } = await issueSession(user);
+  const { accessToken, refreshToken } = await tokenService.issueSession(user);
   setRefreshCookie(res, refreshToken);
 
   auditAs(res, {
@@ -50,7 +44,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Invalid username or password', 401, 'invalid_credentials');
   }
 
-  const { accessToken, refreshToken } = await issueSession(user);
+  const { accessToken, refreshToken } = await tokenService.issueSession(user);
   setRefreshCookie(res, refreshToken);
 
   auditAs(res, {
@@ -67,7 +61,10 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const token = readRefreshCookie(req);
   if (!token) throw new AppError('Invalid or expired refresh token', 401, 'token_invalid');
 
-  const { user, accessToken, refreshToken } = await rotateRefreshToken(token, requestSource(req));
+  const { user, accessToken, refreshToken } = await tokenService.rotateRefreshToken(
+    token,
+    requestSource(req),
+  );
   setRefreshCookie(res, refreshToken);
 
   sendSuccess(res, { user, accessToken }, 'Token refreshed successfully.');
@@ -76,7 +73,7 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const token = readRefreshCookie(req);
   if (token) {
-    const userId = await revokeSession(token);
+    const userId = await tokenService.revokeSession(token);
     if (userId) auditAs(res, { action: 'LOGOUT', event: 'user.logged_out', userId });
   }
   clearRefreshCookie(res);
@@ -84,7 +81,7 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const logoutAll = asyncHandler(async (req: Request, res: Response) => {
-  await revokeAllSessions(currentUserId(req));
+  await tokenService.revokeAllSessions(currentUserId(req));
   clearRefreshCookie(res);
   auditAs(res, { action: 'LOGOUT', event: 'user.logged_out_everywhere' });
   sendSuccess(res, null, 'All sessions revoked.');

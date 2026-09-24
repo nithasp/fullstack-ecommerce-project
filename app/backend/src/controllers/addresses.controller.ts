@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { addressUpdateSchema, newAddressSchema } from '../schemas/address.schema';
 import { idParams } from '../schemas/common.schema';
-import * as addressService from '../services/address.service';
+import { addressService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { currentUserId } from '../utils/request';
 import { sendSuccess } from '../utils/response';

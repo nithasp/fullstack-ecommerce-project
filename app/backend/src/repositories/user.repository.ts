@@ -2,6 +2,7 @@ import pool from '../database';
 import { Queryable } from '../types/database.types';
 import { Pagination } from '../types/pagination.types';
 import { NewUserRow, ProfileUpdate, PublicUser, StoredUser, UserRole } from '../types/user.types';
+import { requireRow } from '../utils/rows';
 
 const SAFE_FIELDS = 'id, first_name, last_name, username, role';
 const LIVE = 'deleted_at IS NULL';
@@ -17,7 +18,7 @@ export class UserRepository {
 
   async count(db: Queryable = pool): Promise<number> {
     const { rows } = await db.query(`SELECT COUNT(*) FROM users WHERE ${LIVE}`);
-    return Number(rows[0].count);
+    return Number(rows[0]?.count ?? 0);
   }
 
   async show(id: number, db: Queryable = pool): Promise<PublicUser | null> {
@@ -75,7 +76,7 @@ export class UserRepository {
         user.role ?? 'customer',
       ],
     );
-    return toPublicUser(rows[0]);
+    return toPublicUser(requireRow(rows, 'INSERT INTO users'));
   }
 
   async updateProfile(id: number, changes: ProfileUpdate, db: Queryable = pool): Promise<PublicUser | null> {

@@ -27,7 +27,7 @@ function fromPostgres(err: PostgresError): HandledError | null {
         statusCode: 400,
         code: 'invalid_request',
         message: entity
-          ? `${entity[0].toUpperCase()}${entity.slice(1)} does not exist`
+          ? `${entity.charAt(0).toUpperCase()}${entity.slice(1)} does not exist`
           : 'A referenced record does not exist',
       };
     }
@@ -83,7 +83,7 @@ export const errorMiddleware = (err: Error, req: Request, res: Response, _next: 
   sendError(
     res,
     statusCode,
-    bodyParserMessage ?? err.message ?? 'Request failed',
+    bodyParserMessage ?? (err.message || 'Request failed'),
     bodyParserMessage ? 'invalid_request' : ((known.code as ErrorCode | undefined) ?? 'bad_request'),
   );
 };

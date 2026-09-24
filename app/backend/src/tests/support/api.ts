@@ -102,5 +102,5 @@ export function refreshCookie(res: supertest.Response): string | undefined {
 }
 
 export function cookieValue(cookie: string): string {
-  return cookie.split(';')[0].split('=')[1];
+  return cookie.split(';')[0]?.split('=')[1] ?? '';
 }

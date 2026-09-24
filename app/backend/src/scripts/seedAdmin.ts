@@ -1,7 +1,7 @@
 import { config } from '../config';
 import pool from '../database';
 import { UserRepository } from '../repositories/user.repository';
-import { createUser } from '../services/user.service';
+import { userService } from '../services';
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const created = await createUser({
+  const created = await userService.createUser({
     username: name,
     password,
     firstName: firstName?.trim() || 'Store',

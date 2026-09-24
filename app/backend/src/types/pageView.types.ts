@@ -19,9 +19,9 @@ export interface PageView {
 }
 
 export interface PageViewFilters {
-  userId?: number;
-  username?: string;
-  path?: string;
-  from?: Date;
-  to?: Date;
+  userId?: number | undefined;
+  username?: string | undefined;
+  path?: string | undefined;
+  from?: Date | undefined;
+  to?: Date | undefined;
 }
