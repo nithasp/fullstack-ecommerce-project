@@ -19,7 +19,6 @@ export const AUDIT_RESULTS = ['success', 'failure'] as const;
 
 export type AuditResult = (typeof AUDIT_RESULTS)[number];
 
-// Small, non-secret facts about one event, e.g. { productId: 5, quantity: 2 } or { changed: ['password'] }
 export type AuditDetails = Record<string, string | number | boolean | string[]>;
 
 export type AuditDetailsFn = (req: Request) => AuditDetails | undefined;

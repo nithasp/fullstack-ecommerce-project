@@ -68,8 +68,6 @@ export function createUserService({ users, orders, addresses, carts, tokens }: U
       });
     },
 
-    // A wrong username costs the same as a wrong password, and a password still stored under the old
-    // scheme is re-hashed under the current one now that it is known to be right
     async authenticate(username: string, password: string): Promise<PublicUser | null> {
       const stored = await users.findCredentials(username);
       if (!stored) {

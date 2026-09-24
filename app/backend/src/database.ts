@@ -37,8 +37,6 @@ export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>
   }
 }
 
-// Reports whether the database is reachable, so a deploy that cannot reach Postgres fails its
-// health check instead of being sent live traffic
 export async function checkDatabase(): Promise<boolean> {
   try {
     await pool.query('SELECT 1');

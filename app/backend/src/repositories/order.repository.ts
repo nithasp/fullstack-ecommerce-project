@@ -72,8 +72,6 @@ export class OrderRepository {
     return rows[0] ? this.show(id, db) : null;
   }
 
-  // Both branches read the same snapshot, so the total is the one the order had before it went and
-  // two requests racing on the same order cannot both be told they deleted it
   async delete(id: number, db: Queryable = pool): Promise<Order | null> {
     const { rows } = await db.query(
       `WITH total AS (

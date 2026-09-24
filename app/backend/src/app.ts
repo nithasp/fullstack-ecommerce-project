@@ -47,8 +47,6 @@ app.use(express.json({ limit: config.jsonBodyLimit }));
 app.use(cookieParser());
 app.set('etag', false);
 
-// Ahead of the rate limiter, so the platform's probe is never throttled and never spends a
-// caller's budget
 app.get(HEALTH_PATH, async (_req: Request, res: Response) => {
   if (!(await checkDatabase())) {
     res.status(503).json({ status: 'unavailable' });

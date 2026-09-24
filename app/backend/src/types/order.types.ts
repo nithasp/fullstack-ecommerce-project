@@ -4,8 +4,6 @@ export const ORDER_STATUSES = ['active', 'complete'] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-// Copied onto the order at checkout, so editing or deleting the address afterwards cannot change
-// where an order says it was sent
 export interface ShippingAddress {
   fullName: string;
   phone: string | null;

@@ -10,7 +10,6 @@ export interface TokenPair {
   refreshToken: string;
 }
 
-// What a client receives: the refresh token travels in an HttpOnly cookie instead of the body
 export interface AuthSession {
   user: PublicUser;
   accessToken: string;

@@ -276,8 +276,6 @@ export class ProductRepository {
   }
 }
 
-// % and _ in a search term are escaped so they match those characters, instead of acting as
-// wildcards that would widen the query beyond what the caller asked for
 const likeTerm = (search: string): string => `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 
 function where(filters: ProductFilters, params: unknown[]): string {

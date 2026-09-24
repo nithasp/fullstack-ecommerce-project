@@ -22,8 +22,6 @@ export interface ProductVariant {
 
 export type VariantInput = Omit<ProductVariant, 'id' | 'productId'>;
 
-// stock is the products column itself, not the total across options, because checkout reduces
-// whichever row actually holds the stock it is spending
 export interface LockedProduct {
   id: number;
   name: string;

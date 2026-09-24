@@ -21,8 +21,8 @@ export class RefreshTokenRepository {
     return token;
   }
 
-  // Marks a live, unused token as used and returns it. It is one conditional UPDATE, so when two
-  // requests race with the same token only one of them gets the row back.
+  // One conditional UPDATE, so when two requests race with the same token only one of them gets
+  // the row back
   async consume(token: string, db: Queryable = pool): Promise<StoredRefreshToken | null> {
     const { rows } = await db.query(
       `UPDATE refresh_tokens SET used_at = NOW()

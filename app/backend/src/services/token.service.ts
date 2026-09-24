@@ -12,10 +12,8 @@ import { AppError } from '../utils/errors';
 const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
 const INVALID_REFRESH_TOKEN = 'Invalid or expired refresh token';
 
-// Tokens rotate on every use, so a browser with several tabs open hands the same cookie to each
-// of them at once on a reload. Treating that as theft would sign the user out whenever they
-// reopen the shop, so a token replayed this soon after its own rotation is renewed instead. Past
-// the window, a second use is still taken as a copied token and the whole session is revoked.
+// A replay this soon after the token's own rotation is renewed; past the window a second use is
+// taken as a copied token and the whole session is revoked (OWASP API2)
 const REUSE_GRACE_MS = 10_000;
 
 // The role claim is only ever used to describe a request in the audit log; every authorization
@@ -50,15 +48,6 @@ export function createTokenService({ refreshTokens, users, audit }: TokenService
       return { accessToken: signAccessToken(user), refreshToken };
     },
 
-    /**
-     * Exchanges a refresh token for a new pair. Consuming the old token and storing its successor
-     * happen in one transaction, and consuming is a single conditional UPDATE, so two requests racing
-     * with the same token can't both walk away with a new pair.
-     *
-     * A token that was already exchanged and turns up long afterwards has been copied: one of its two
-     * holders is not the user, and there is no telling which. So the whole session (every token in the
-     * family) is revoked and the user signs in again.
-     */
     async rotateRefreshToken(
       token: string,
       source: AuditSource = {},
@@ -122,8 +111,6 @@ export function createTokenService({ refreshTokens, users, audit }: TokenService
       return refreshTokens.deleteFamilyOf(refreshToken);
     },
 
-    // Logout everywhere; also used when a role, a password or an account changes so the old session
-    // cannot be renewed
     async revokeAllSessions(userId: number): Promise<void> {
       await refreshTokens.deleteAllForUser(userId);
     },

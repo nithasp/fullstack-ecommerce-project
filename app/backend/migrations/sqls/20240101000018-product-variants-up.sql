@@ -1,6 +1,3 @@
--- Stock used to live in two places at once: products.stock and a stock field inside the types JSON.
--- Checkout reduced both, so the two counts drifted apart. A variant is now a row: stock has one
--- home, and a cart item or order line points at the option it was bought with.
 CREATE TABLE IF NOT EXISTS product_variants (
     id SERIAL PRIMARY KEY,
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -54,15 +51,12 @@ SET variant_id = v.id
 FROM product_variants v
 WHERE v.product_id = ci.product_id AND v.ext_id = ci.type_id AND COALESCE(ci.type_id, '') <> '';
 
--- A product that has options can no longer be carted without choosing one, so any older row that
--- did is dropped rather than left pointing at nothing.
 DELETE FROM cart_items ci
 WHERE ci.variant_id IS NULL
   AND EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = ci.product_id);
 
 ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS cart_items_user_product_type_unique;
 
--- COALESCE rather than NULLS NOT DISTINCT, which needs Postgres 15; ids are positive, so 0 is free
 CREATE UNIQUE INDEX IF NOT EXISTS cart_items_user_product_variant_unique
   ON cart_items (user_id, product_id, COALESCE(variant_id, 0));
 

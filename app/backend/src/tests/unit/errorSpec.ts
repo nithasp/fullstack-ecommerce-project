@@ -86,7 +86,6 @@ describe('Error middleware', () => {
     });
   });
 
-  // An unexpected failure must never echo its message: it can carry SQL, a stack or an internal path
   describe('unexpected failures', () => {
     it('logs a bare Error and answers a generic 500', () => {
       const res = handle(new Error('connect ECONNREFUSED 10.0.0.4:5432'));

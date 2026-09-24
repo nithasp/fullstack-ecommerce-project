@@ -7,8 +7,6 @@ import { Review } from '../types/product.types';
 import { toProductType, toProductTypes } from './product.repository';
 import { requireRow } from '../utils/rows';
 
-// The chosen option is read from product_variants on every request rather than from a copy taken
-// when the item was added, so the cart cannot show a price that checkout will not charge
 const selectItems = (source: string): string => `SELECT ci.*,
          p.name           AS product_name,
          p.price          AS product_price,
@@ -115,8 +113,6 @@ export class CartRepository {
     return rowCount ? this.findById(cartItemId, userId, db) : null;
   }
 
-  // Deleting and reading the deleted row is one statement, so two requests racing on the same item
-  // cannot both be told they removed it
   async remove(cartItemId: number, userId?: number, db: Queryable = pool): Promise<CartItem | null> {
     const params: unknown[] = [cartItemId];
     const scope = userId === undefined ? '' : ` AND user_id = $${params.push(userId)}`;
